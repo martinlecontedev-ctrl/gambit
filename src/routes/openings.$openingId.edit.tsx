@@ -1,8 +1,10 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { Config } from '@lichess-org/chessground/config';
+import type { DrawShape } from '@lichess-org/chessground/draw';
 import type { Key } from '@lichess-org/chessground/types';
 import { Chessboard } from '../components/Chessboard';
+import { NagSquareBadge } from '../components/NagSquareBadge';
 import {
   applyUci,
   chessFromFen,
@@ -14,15 +16,36 @@ import {
   uciFromMove,
   uciToSanAt,
 } from '../domain/chess';
+import { NAG_COLORS, NAG_LABELS, NAG_ORDER, NAG_SYMBOLS } from '../domain/nag';
 import {
   buildPrefixTrie,
   continuationsAt,
   effectiveParentId,
   parentForNewVariant,
 } from '../domain/tree';
-import type { Line, Opening } from '../domain/types';
+import type {
+  Annotation,
+  ArrowBrush,
+  ArrowDef,
+  Line,
+  Nag,
+  Opening,
+} from '../domain/types';
 import { openingsRepo } from '../storage/repository';
 import { useStored } from '../storage/store';
+
+const KNOWN_BRUSHES: ArrowBrush[] = [
+  'green',
+  'red',
+  'blue',
+  'yellow',
+  'paleGreen',
+  'paleRed',
+  'paleBlue',
+  'paleGrey',
+];
+const isKnownBrush = (b: string | undefined): b is ArrowBrush =>
+  b !== undefined && (KNOWN_BRUSHES as string[]).includes(b);
 
 export const Route = createFileRoute('/openings/$openingId/edit')({ component: EditOpening });
 
@@ -93,32 +116,88 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
     return m;
   }, [line]);
 
+  const currentFen = useMemo(() => fenOf(chess), [chess]);
+  const currentAnnotation = opening.annotations?.[currentFen];
+
+  /** NAG per ply index in the current line — fed to the scoresheet so the
+   * judgement glyph shows next to the move that earned it. */
+  const nagsAlongLine = useMemo(() => {
+    const m = new Map<number, Nag>();
+    if (!line) return m;
+    for (let i = 0; i < line.moves.length; i++) {
+      const f = fenAtPosition.get(i + 1);
+      if (!f) continue;
+      const nag = opening.annotations?.[f]?.nag;
+      if (nag !== undefined) m.set(i, nag);
+    }
+    return m;
+  }, [line, fenAtPosition, opening.annotations]);
+
+  /**
+   * Apply a mutation against the **freshest** opening from storage rather
+   * than the closure copy. Without this, two writes triggered in quick
+   * succession (e.g. arrow drawn → move played) race on the closure-captured
+   * opening and the later save silently drops the earlier change.
+   */
+  const updateOpening = (mutator: (latest: Opening) => Opening) => {
+    const latest = openingsRepo.get(opening.id);
+    if (!latest) return;
+    openingsRepo.save({ ...mutator(latest), updatedAt: Date.now() });
+  };
+
+  /**
+   * Apply a partial patch to the annotation at `fen`. The merge happens
+   * against the freshest existing annotation read from the repo, not against
+   * whatever the caller saw in its closure — so two writers updating
+   * different fields of the same annotation (typical: arrows from
+   * chessground vs comment/NAG from the panel) can't clobber each other.
+   */
+  const updateAnnotation = (fen: string, patch: Partial<Annotation>) => {
+    updateOpening(latest => {
+      const existing = latest.annotations?.[fen] ?? {};
+      const merged: Annotation = { ...existing, ...patch };
+      const isEmpty =
+        (!merged.comment || !merged.comment.trim()) &&
+        merged.nag === undefined &&
+        (!merged.arrows || merged.arrows.length === 0);
+      const next: Record<string, Annotation> = {
+        ...(latest.annotations ?? {}),
+      };
+      if (isEmpty) delete next[fen];
+      else next[fen] = merged;
+      return { ...latest, annotations: next };
+    });
+  };
+
   const playMove = (uci: string) => {
     if (!line) return;
-    // Same continuation as the current line — just advance.
     if (line.moves[cursorIdx] === uci) {
       setCursorIdx(cursorIdx + 1);
       return;
     }
-    // At the end of the current line: extend it. (Even if a sibling already
-    // has the same continuation, stay in the user's chosen line.)
-    if (cursorIdx === line.moves.length) {
+    // Resolve everything against the freshest opening to avoid clobbering a
+    // sibling mutation (e.g. arrows just persisted by drawable.onChange).
+    const latest = openingsRepo.get(opening.id);
+    if (!latest) return;
+    const latestLine = latest.lines.find(l => l.id === line.id);
+    if (!latestLine) return;
+
+    if (cursorIdx === latestLine.moves.length) {
       openingsRepo.save({
-        ...opening,
-        lines: opening.lines.map(l =>
-          l.id === line.id ? { ...l, moves: [...l.moves, uci] } : l,
+        ...latest,
+        lines: latest.lines.map(l =>
+          l.id === latestLine.id ? { ...l, moves: [...l.moves, uci] } : l,
         ),
         updatedAt: Date.now(),
       });
       setCursorIdx(cursorIdx + 1);
       return;
     }
-    // Mid-line. If some other line already takes this continuation from the
-    // same prefix, switch to it rather than creating a duplicate.
-    const prefix = line.moves.slice(0, cursorIdx);
-    const existing = opening.lines.find(
+
+    const prefix = latestLine.moves.slice(0, cursorIdx);
+    const existing = latest.lines.find(
       l =>
-        l.id !== line.id &&
+        l.id !== latestLine.id &&
         l.moves.length > cursorIdx &&
         l.moves[cursorIdx] === uci &&
         prefix.every((m, i) => l.moves[i] === m),
@@ -128,9 +207,8 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
       setCursorIdx(cursorIdx + 1);
       return;
     }
-    // Otherwise create a variant whose parent is the ancestor that still
-    // owns the position right before the cursor.
-    const parent = parentForNewVariant(opening.lines, line, cursorIdx);
+
+    const parent = parentForNewVariant(latest.lines, latestLine, cursorIdx);
     const variant: Line = {
       id: crypto.randomUUID(),
       name: 'Variante',
@@ -138,8 +216,8 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
       moves: [...prefix, uci],
     };
     openingsRepo.save({
-      ...opening,
-      lines: [...opening.lines, variant],
+      ...latest,
+      lines: [...latest.lines, variant],
       updatedAt: Date.now(),
     });
     setSelectedLineId(variant.id);
@@ -149,6 +227,12 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
   const config: Config = useMemo(() => {
     const lastMoveUci = cursorIdx > 0 && line ? line.moves[cursorIdx - 1] : undefined;
     const tc = turnColor(chess);
+    const storedArrows: DrawShape[] =
+      currentAnnotation?.arrows?.map(a => ({
+        orig: a.orig as Key,
+        dest: a.dest as Key | undefined,
+        brush: a.brush,
+      })) ?? [];
     return {
       fen: fenOf(chess),
       orientation: opening.color,
@@ -169,32 +253,54 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
       },
       animation: { enabled: true, duration: 200 },
       draggable: { showGhost: true },
-      drawable: { enabled: true },
+      drawable: {
+        enabled: true,
+        visible: true,
+        defaultSnapToValidMove: true,
+        // chessground's default fires onChange([]) when the user grabs a
+        // movable piece, which would silently wipe the position's arrows
+        // before we even get to persist the move.
+        eraseOnMovablePieceClick: false,
+        shapes: storedArrows,
+        onChange: (shapes: DrawShape[]) => {
+          const arrows: ArrowDef[] = shapes
+            .filter(s => isKnownBrush(s.brush))
+            .map(s => ({
+              orig: s.orig as string,
+              dest: s.dest as string | undefined,
+              brush: s.brush as ArrowBrush,
+            }));
+          updateAnnotation(currentFen, { arrows });
+        },
+      },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chess, opening, line, cursorIdx, selectedLineId]);
+  }, [chess, opening, line, cursorIdx, selectedLineId, currentAnnotation, currentFen]);
 
   /** Delete a line and re-parent its children to its own parent (no orphans). */
   const deleteLine = (id: string) => {
-    const deleted = opening.lines.find(l => l.id === id);
-    if (!deleted) return;
-    const nextLines = opening.lines
-      .filter(l => l.id !== id)
-      .map(l =>
-        l.parentLineId === id ? { ...l, parentLineId: deleted.parentLineId } : l,
-      );
-    openingsRepo.save({ ...opening, lines: nextLines, updatedAt: Date.now() });
+    updateOpening(latest => {
+      const deleted = latest.lines.find(l => l.id === id);
+      if (!deleted) return latest;
+      return {
+        ...latest,
+        lines: latest.lines
+          .filter(l => l.id !== id)
+          .map(l =>
+            l.parentLineId === id ? { ...l, parentLineId: deleted.parentLineId } : l,
+          ),
+      };
+    });
   };
 
   const truncateAtCursor = () => {
     if (!line) return;
-    openingsRepo.save({
-      ...opening,
-      lines: opening.lines.map(l =>
+    updateOpening(latest => ({
+      ...latest,
+      lines: latest.lines.map(l =>
         l.id === selectedLineId ? { ...l, moves: l.moves.slice(0, cursorIdx) } : l,
       ),
-      updatedAt: Date.now(),
-    });
+    }));
   };
 
   const removeOpening = () => {
@@ -236,8 +342,25 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
           </div>
         </div>
 
-        <div className="mx-auto w-full max-w-[560px]">
-          <Chessboard config={config} />
+        <div className="mx-auto w-full max-w-[560px] space-y-3">
+          <div className="relative">
+            <Chessboard config={config} />
+            {currentAnnotation?.nag !== undefined &&
+              cursorIdx > 0 &&
+              line &&
+              line.moves[cursorIdx - 1] && (
+                <NagSquareBadge
+                  nag={currentAnnotation.nag}
+                  square={line.moves[cursorIdx - 1].slice(2, 4)}
+                  orientation={opening.color}
+                />
+              )}
+          </div>
+          <AnnotationPanel
+            fen={currentFen}
+            annotation={currentAnnotation}
+            onPatch={patch => updateAnnotation(currentFen, patch)}
+          />
         </div>
       </section>
 
@@ -259,6 +382,7 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
                 fenAtPosition={fenAtPosition}
                 trie={trie}
                 cursorIdx={cursorIdx}
+                nagsAlongLine={nagsAlongLine}
                 onSetCursor={pos => setCursorIdx(pos)}
                 onSwitchLine={(lineId, pos) => {
                   setSelectedLineId(lineId);
@@ -344,6 +468,7 @@ type SelectedLineProps = {
   fenAtPosition: Map<number, string>;
   trie: TrieRoot;
   cursorIdx: number;
+  nagsAlongLine: Map<number, Nag>;
   onSetCursor: (pos: number) => void;
   onSwitchLine: (lineId: string, pos: number) => void;
 };
@@ -361,6 +486,7 @@ function SelectedLineView({
   fenAtPosition,
   trie,
   cursorIdx,
+  nagsAlongLine,
   onSetCursor,
   onSwitchLine,
 }: SelectedLineProps) {
@@ -414,6 +540,7 @@ function SelectedLineView({
           trailing={trailing}
           fenAtPosition={fenAtPosition}
           cursorIdx={cursorIdx}
+          nag={nagsAlongLine.get(whitePos)}
           onSetCursor={onSetCursor}
           onSwitchLine={onSwitchLine}
           shaded={isEven}
@@ -427,6 +554,7 @@ function SelectedLineView({
           trailing={trailing}
           fenAtPosition={fenAtPosition}
           cursorIdx={cursorIdx}
+          nag={nagsAlongLine.get(blackPos)}
           onSetCursor={onSetCursor}
           onSwitchLine={onSwitchLine}
           shaded={isEven}
@@ -451,6 +579,7 @@ type MoveCellProps = {
   trailing: { uci: string; lineIds: string[] }[];
   fenAtPosition: Map<number, string>;
   cursorIdx: number;
+  nag: Nag | undefined;
   onSetCursor: (pos: number) => void;
   onSwitchLine: (lineId: string, pos: number) => void;
   shaded: boolean;
@@ -465,6 +594,7 @@ function MoveCell({
   trailing,
   fenAtPosition,
   cursorIdx,
+  nag,
   onSetCursor,
   onSwitchLine,
   shaded,
@@ -487,11 +617,21 @@ function MoveCell({
     >
       <div className="flex flex-wrap items-baseline gap-x-2">
         {hasMove && (
-          <SelectedMove
-            san={sans[pos] ?? line.moves[pos]}
-            isCursor={cursorIdx === pos + 1}
-            onClick={() => onSetCursor(pos + 1)}
-          />
+          <span className="inline-flex items-baseline gap-0.5">
+            <SelectedMove
+              san={sans[pos] ?? line.moves[pos]}
+              isCursor={cursorIdx === pos + 1}
+              onClick={() => onSetCursor(pos + 1)}
+            />
+            {nag !== undefined && (
+              <span
+                className={`font-mono text-xs leading-none ${NAG_COLORS[nag]}`}
+                title={NAG_LABELS[nag]}
+              >
+                {NAG_SYMBOLS[nag]}
+              </span>
+            )}
+          </span>
         )}
         {fen &&
           alts.map(alt => (
@@ -528,6 +668,87 @@ function SelectedMove({
     >
       {san}
     </button>
+  );
+}
+
+function AnnotationPanel({
+  fen,
+  annotation,
+  onPatch,
+}: {
+  fen: string;
+  annotation: Annotation | undefined;
+  onPatch: (patch: Partial<Annotation>) => void;
+}) {
+  // Only the comment is held locally for smooth typing; NAG and arrows are
+  // mirrored straight from `annotation` so other writers (chessground onChange,
+  // another panel) can't be silently overwritten on save.
+  const [draftComment, setDraftComment] = useState(annotation?.comment ?? '');
+  const draftCommentRef = useRef(draftComment);
+  draftCommentRef.current = draftComment;
+
+  useEffect(() => {
+    setDraftComment(annotation?.comment ?? '');
+  }, [fen]);
+
+  const toggleNag = (nag: Nag) => {
+    onPatch({ nag: annotation?.nag === nag ? undefined : nag });
+  };
+
+  const clearArrows = () => onPatch({ arrows: [] });
+
+  const onCommentBlur = () => onPatch({ comment: draftCommentRef.current });
+
+  const arrowsCount = annotation?.arrows?.length ?? 0;
+  const currentNag = annotation?.nag;
+
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+          Note pour cette position
+        </span>
+        <div className="flex gap-0.5">
+          {NAG_ORDER.map(n => (
+            <button
+              key={n}
+              onClick={() => toggleNag(n)}
+              title={NAG_LABELS[n]}
+              className={`rounded px-1.5 py-0.5 font-mono text-xs leading-none transition ${
+                currentNag === n
+                  ? `${NAG_COLORS[n]} bg-zinc-800 ring-1 ring-inset ring-zinc-700`
+                  : 'text-zinc-500 hover:text-zinc-200'
+              }`}
+            >
+              {NAG_SYMBOLS[n]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <textarea
+        value={draftComment}
+        onChange={e => setDraftComment(e.target.value)}
+        onBlur={onCommentBlur}
+        placeholder="Idée du coup, plan, faiblesse à exploiter…"
+        rows={2}
+        className="mt-2 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 p-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-600 focus:outline-none"
+      />
+      <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-500">
+        <span>
+          {arrowsCount > 0
+            ? `${arrowsCount} forme${arrowsCount > 1 ? 's' : ''} sur le plateau`
+            : 'Clic-droit-glisser pour dessiner des flèches'}
+        </span>
+        {arrowsCount > 0 && (
+          <button
+            onClick={clearArrows}
+            className="text-amber-400 hover:text-amber-300"
+          >
+            Effacer les flèches
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

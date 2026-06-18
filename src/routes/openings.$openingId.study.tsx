@@ -4,6 +4,7 @@ import type { Chess } from 'chessops/chess';
 import type { Config } from '@lichess-org/chessground/config';
 import type { Key } from '@lichess-org/chessground/types';
 import { Chessboard } from '../components/Chessboard';
+import { NagSquareBadge } from '../components/NagSquareBadge';
 import {
   applyUci,
   chessFromFen,
@@ -14,6 +15,7 @@ import {
   uciFromMove,
   uciToSanAt,
 } from '../domain/chess';
+import { NAG_COLORS, NAG_LABELS, NAG_SYMBOLS } from '../domain/nag';
 import { newCardStats, review, type Grade } from '../domain/srs';
 import { buildPrefixTrie, type TrieNode } from '../domain/tree';
 import type { Card, CardStats, Opening } from '../domain/types';
@@ -212,6 +214,13 @@ function StudySession({
   );
   const displayLastMove = showAnswer ? expectedUci : undefined;
 
+  /** The annotation lives on the position *after* the expected move, so it
+   * comes into view together with the answer reveal. */
+  const annotation = useMemo(() => {
+    if (!showAnswer) return undefined;
+    return opening.annotations?.[fenOf(displayChess)];
+  }, [opening.annotations, showAnswer, displayChess]);
+
   const config: Config = useMemo(() => {
     if (!card) return {};
     const interactive = phase === 'awaiting';
@@ -236,8 +245,28 @@ function StudySession({
       },
       animation: { enabled: true, duration: 200 },
       draggable: { showGhost: true },
+      drawable: {
+        enabled: false,
+        visible: true,
+        autoShapes: annotation?.arrows
+          ? annotation.arrows.map(a => ({
+              orig: a.orig as Key,
+              dest: a.dest as Key | undefined,
+              brush: a.brush,
+            }))
+          : [],
+      },
     };
-  }, [chess, displayChess, displayLastMove, opening.color, phase, expectedUci, card]);
+  }, [
+    chess,
+    displayChess,
+    displayLastMove,
+    opening.color,
+    phase,
+    expectedUci,
+    card,
+    annotation,
+  ]);
 
   if (finished) {
     return (
@@ -284,7 +313,16 @@ function StudySession({
         </div>
 
         <div className="mx-auto w-full max-w-[560px]">
-          <Chessboard config={config} />
+          <div className="relative">
+            <Chessboard config={config} />
+            {showAnswer && annotation?.nag !== undefined && expectedUci && (
+              <NagSquareBadge
+                nag={annotation.nag}
+                square={expectedUci.slice(2, 4)}
+                orientation={opening.color}
+              />
+            )}
+          </div>
         </div>
       </section>
 
@@ -303,9 +341,24 @@ function StudySession({
             )}
             {phase === 'correct' && (
               <div>
-                <p className="text-sm font-medium text-emerald-300">Correct.</p>
-                <p className="mt-1 text-xs text-zinc-500">Évaluez votre rappel.</p>
-                <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-emerald-300">Correct.</p>
+                  {annotation?.nag !== undefined && (
+                    <span
+                      className={`font-mono text-sm leading-none ${NAG_COLORS[annotation.nag]}`}
+                      title={NAG_LABELS[annotation.nag]}
+                    >
+                      {NAG_SYMBOLS[annotation.nag]}
+                    </span>
+                  )}
+                </div>
+                {annotation?.comment?.trim() && (
+                  <p className="mt-2 border-l-2 border-zinc-700 pl-3 text-sm italic text-zinc-300">
+                    {annotation.comment}
+                  </p>
+                )}
+                <p className="mt-3 text-xs text-zinc-500">Évaluez votre rappel.</p>
+                <div className="mt-3 grid grid-cols-3 gap-2">
                   <GradeButton onClick={() => grade(3)} label="Difficile" tone="amber" />
                   <GradeButton onClick={() => grade(4)} label="Bien" tone="emerald" />
                   <GradeButton onClick={() => grade(5)} label="Facile" tone="sky" />
@@ -314,13 +367,28 @@ function StudySession({
             )}
             {phase === 'wrong' && (
               <div>
-                <p className="text-sm font-medium text-red-300">Erreur.</p>
-                <p className="mt-1 text-xs text-zinc-500">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-red-300">Erreur.</p>
+                  {annotation?.nag !== undefined && (
+                    <span
+                      className={`font-mono text-sm leading-none ${NAG_COLORS[annotation.nag]}`}
+                      title={NAG_LABELS[annotation.nag]}
+                    >
+                      {NAG_SYMBOLS[annotation.nag]}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 text-xs text-zinc-500">
                   Coup attendu :{' '}
                   <span className="font-mono text-zinc-200">
                     {expectedUci ? uciToSanAt(fenOf(chess), expectedUci) : '—'}
                   </span>
                 </p>
+                {annotation?.comment?.trim() && (
+                  <p className="mt-2 border-l-2 border-zinc-700 pl-3 text-sm italic text-zinc-300">
+                    {annotation.comment}
+                  </p>
+                )}
                 <button
                   onClick={() => grade(0)}
                   className="mt-4 w-full rounded-lg bg-red-950/40 px-3 py-2 text-sm font-medium text-red-200 hover:bg-red-900/60"
