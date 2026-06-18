@@ -1,10 +1,12 @@
-import type { Card, Opening } from '../domain/types';
+import type { Card, Folder, Opening } from '../domain/types';
 
 const KEY_OPENINGS = 'gambit.openings';
 const KEY_CARDS = 'gambit.cards';
+const KEY_FOLDERS = 'gambit.folders';
 
 let cachedOpenings: Opening[] | null = null;
 let cachedCards: Card[] | null = null;
+let cachedFolders: Folder[] | null = null;
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -19,6 +21,7 @@ export function subscribe(fn: Listener): () => void {
 function invalidate() {
   cachedOpenings = null;
   cachedCards = null;
+  cachedFolders = null;
   listeners.forEach(l => l());
 }
 
@@ -39,6 +42,11 @@ function readOpenings(): Opening[] {
 function readCards(): Card[] {
   if (cachedCards === null) cachedCards = read<Card[]>(KEY_CARDS, []);
   return cachedCards;
+}
+
+function readFolders(): Folder[] {
+  if (cachedFolders === null) cachedFolders = read<Folder[]>(KEY_FOLDERS, []);
+  return cachedFolders;
 }
 
 export const openingsRepo = {
@@ -69,6 +77,37 @@ export const cardsRepo = {
     if (i >= 0) all[i] = card;
     else all.push(card);
     localStorage.setItem(KEY_CARDS, JSON.stringify(all));
+    invalidate();
+  },
+};
+
+export const foldersRepo = {
+  list: readFolders,
+  get: (id: string): Folder | undefined => readFolders().find(f => f.id === id),
+  save: (folder: Folder): void => {
+    const all = [...readFolders()];
+    const i = all.findIndex(f => f.id === folder.id);
+    if (i >= 0) all[i] = folder;
+    else all.push(folder);
+    localStorage.setItem(KEY_FOLDERS, JSON.stringify(all));
+    invalidate();
+  },
+  /** Drop the folder along with every opening (and their SRS cards) that
+   * lived inside. Openings belonging to other folders or to the root level
+   * stay untouched. */
+  delete: (id: string): void => {
+    const allOpenings = readOpenings();
+    const removedOpeningIds = new Set(
+      allOpenings.filter(o => o.folderId === id).map(o => o.id),
+    );
+    const folders = readFolders().filter(f => f.id !== id);
+    const remainingOpenings = allOpenings.filter(o => o.folderId !== id);
+    const remainingCards = readCards().filter(
+      c => !removedOpeningIds.has(c.openingId),
+    );
+    localStorage.setItem(KEY_FOLDERS, JSON.stringify(folders));
+    localStorage.setItem(KEY_OPENINGS, JSON.stringify(remainingOpenings));
+    localStorage.setItem(KEY_CARDS, JSON.stringify(remainingCards));
     invalidate();
   },
 };

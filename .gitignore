@@ -7,3 +7,4 @@ dist
 .vite
 *.tsbuildinfo
 src/routeTree.gen.ts
+CLAUDE.md

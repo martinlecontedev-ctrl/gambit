@@ -10,9 +10,14 @@ function RootLayout() {
           <Link to="/" className="text-lg font-semibold tracking-tight">
             Gambit
           </Link>
-          <span className="text-xs uppercase tracking-widest text-zinc-500">
-            Ouvertures
-          </span>
+          <nav className="flex items-center gap-5 text-xs uppercase tracking-widest text-zinc-500">
+            <Link to="/" className="hover:text-zinc-200" activeProps={{ className: 'text-zinc-200' }}>
+              Ouvertures
+            </Link>
+            <Link to="/guide" className="hover:text-zinc-200" activeProps={{ className: 'text-zinc-200' }}>
+              Guide
+            </Link>
+          </nav>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-6 py-8">

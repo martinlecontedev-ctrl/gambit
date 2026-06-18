@@ -56,8 +56,17 @@ export type Opening = {
   lines: Line[];
   /** Annotations keyed by the FEN of the position they describe. */
   annotations?: Record<string, Annotation>;
+  /** Flat folder the opening lives in. `undefined` = root level. */
+  folderId?: string;
   createdAt: number;
   updatedAt: number;
+};
+
+/** Flat (non-nested) folder used to group openings on the home. */
+export type Folder = {
+  id: string;
+  name: string;
+  createdAt: number;
 };
 
 export type CardStats = {

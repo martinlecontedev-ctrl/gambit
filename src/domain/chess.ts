@@ -1,7 +1,7 @@
 import { Chess } from 'chessops/chess';
 import { parseFen, makeFen, INITIAL_FEN } from 'chessops/fen';
 import { chessgroundDests } from 'chessops/compat';
-import { parseUci, parseSquare } from 'chessops/util';
+import { makeSquare, parseUci, parseSquare } from 'chessops/util';
 import { makeSanAndPlay } from 'chessops/san';
 import type { Key, Dests } from '@lichess-org/chessground/types';
 
@@ -35,7 +35,9 @@ export function turnColor(chess: Chess): 'white' | 'black' {
 /**
  * Build a UCI string from chessground (orig, dest) coords.
  * Auto-promotes pawn moves to the last rank into a queen — sufficient for
- * opening drills.
+ * opening drills. Castling moves get rewritten to the king-target form
+ * (e.g. e1c1 / e1g1) regardless of whether the user dropped the king on the
+ * castling square or directly on its rook (Chess960-style).
  */
 export function uciFromMove(chess: Chess, orig: Key, dest: Key): string {
   const sq = parseSquare(orig);
@@ -45,7 +47,43 @@ export function uciFromMove(chess: Chess, orig: Key, dest: Key): string {
       return `${orig}${dest}q`;
     }
   }
-  return `${orig}${dest}`;
+  return normalizeCastleUci(chess, `${orig}${dest}`);
+}
+
+/**
+ * Rewrite a king move that lands on its own rook (Chess960-style castling)
+ * into the standard king-target form (king moves two squares: e1c1/e1g1,
+ * e8c8/e8g8). All other UCIs are passed through unchanged. Internal helper
+ * for `uciFromMove` and `sameMove` — no consumer outside the module.
+ */
+function normalizeCastleUci(chess: Chess, uci: string): string {
+  if (uci.length < 4) return uci;
+  const fromKey = uci.slice(0, 2);
+  const toKey = uci.slice(2, 4);
+  const promo = uci.length > 4 ? uci.slice(4) : '';
+  const fromSq = parseSquare(fromKey);
+  const toSq = parseSquare(toKey);
+  if (fromSq === undefined || toSq === undefined) return uci;
+  const piece = chess.board.get(fromSq);
+  if (piece?.role !== 'king') return uci;
+  const target = chess.board.get(toSq);
+  if (target?.role !== 'rook' || target.color !== piece.color) return uci;
+  const fromFile = fromSq % 8;
+  const toFile = toSq % 8;
+  const rank = Math.floor(fromSq / 8);
+  // Long castle when rook is on the queenside (file < king's), king lands on c.
+  const kingTargetFile = toFile > fromFile ? 6 : 2;
+  return `${fromKey}${makeSquare(rank * 8 + kingTargetFile)}${promo}`;
+}
+
+/**
+ * UCI equality that's robust to the dual castling convention: both
+ * `e1c1` (king-target) and `e1a1` (king-on-rook) compare equal when they
+ * describe the same castling move in `chess`.
+ */
+export function sameMove(chess: Chess, a: string, b: string): boolean {
+  if (a === b) return true;
+  return normalizeCastleUci(chess, a) === normalizeCastleUci(chess, b);
 }
 
 export function lineToSan(moves: string[]): string[] {

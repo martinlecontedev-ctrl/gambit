@@ -11,6 +11,7 @@ import {
   fenOf,
   legalDests,
   positionKey,
+  sameMove,
   START_FEN,
   turnColor,
   uciFromMove,
@@ -259,7 +260,8 @@ function StudySession({
           after: (orig: Key, dest: Key) => {
             if (!interactive) return;
             const uci = uciFromMove(chess, orig, dest);
-            setPhase(uci === expectedUci ? 'correct' : 'wrong');
+            const correct = expectedUci !== undefined && sameMove(chess, uci, expectedUci);
+            setPhase(correct ? 'correct' : 'wrong');
           },
         },
       },

@@ -4,6 +4,7 @@ import type { Config } from '@lichess-org/chessground/config';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import type { Key } from '@lichess-org/chessground/types';
 import { Chessboard } from '../components/Chessboard';
+import { Modal } from '../components/Modal';
 import { NagSquareBadge } from '../components/NagSquareBadge';
 import {
   applyUci,
@@ -12,12 +13,14 @@ import {
   legalDests,
   lineToSan,
   positionKey,
+  sameMove,
   START_FEN,
   turnColor,
   uciFromMove,
   uciToSanAt,
 } from '../domain/chess';
 import { NAG_COLORS, NAG_LABELS, NAG_ORDER, NAG_SYMBOLS } from '../domain/nag';
+import { exportToPgn } from '../domain/pgn';
 import {
   buildPrefixTrie,
   continuationsAt,
@@ -197,7 +200,7 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
 
   const playMove = (uci: string) => {
     if (!line) return;
-    if (line.moves[cursorIdx] === uci) {
+    if (line.moves[cursorIdx] && sameMove(chess, line.moves[cursorIdx], uci)) {
       setCursorIdx(cursorIdx + 1);
       return;
     }
@@ -336,6 +339,7 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
   };
 
   const canDeleteVariant = !!line && line.id !== rootLine?.id;
+  const [exportOpen, setExportOpen] = useState(false);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
@@ -357,6 +361,12 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
               className="rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-400 hover:border-red-900 hover:text-red-300"
             >
               Supprimer
+            </button>
+            <button
+              onClick={() => setExportOpen(true)}
+              className="rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:text-zinc-100"
+            >
+              Exporter
             </button>
             <Link
               to="/openings/$openingId/study"
@@ -482,7 +492,64 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
           </div>
         </div>
       </aside>
+
+      {exportOpen && (
+        <ExportPgnModal onClose={() => setExportOpen(false)} opening={opening} />
+      )}
     </div>
+  );
+}
+
+function ExportPgnModal({
+  onClose,
+  opening,
+}: {
+  onClose: () => void;
+  opening: Opening;
+}) {
+  const pgn = useMemo(() => exportToPgn(opening), [opening]);
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(pgn);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignored */
+    }
+  };
+
+  return (
+    <Modal open onClose={onClose} title="Exporter en PGN">
+      <div className="space-y-3">
+        <p className="text-xs text-zinc-500">
+          Compatible Lichess Study, ChessBase, Chessable. Inclut variantes,
+          commentaires, NAGs et flèches.
+        </p>
+        <textarea
+          readOnly
+          value={pgn}
+          rows={10}
+          className="w-full resize-none rounded-md border border-zinc-800 bg-zinc-950 p-2 font-mono text-xs text-zinc-100 focus:outline-none"
+          onFocus={e => e.currentTarget.select()}
+        />
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100"
+          >
+            Fermer
+          </button>
+          <button
+            onClick={copy}
+            className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
+          >
+            {copied ? 'Copié ✓' : 'Copier'}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

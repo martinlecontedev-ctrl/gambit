@@ -1,6 +1,6 @@
 import type { CardStats } from './types';
 
-export const DAY_MS = 86_400_000;
+const DAY_MS = 86_400_000;
 
 export const newCardStats = (now = Date.now()): CardStats => ({
   ease: 2.5,
