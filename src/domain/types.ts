@@ -3,6 +3,8 @@ export type Color = 'white' | 'black';
 export type Line = {
   id: string;
   name: string;
+  /** Parent line in the variant tree. `undefined` means root. */
+  parentLineId?: string;
   /** UCI moves from the initial position. */
   moves: string[];
 };
@@ -28,10 +30,11 @@ export type CardStats = {
 };
 
 export type Card = CardStats & {
-  /** Composite ID: `${openingId}:${lineId}:${plyIdx}`. */
+  /** Composite ID derived from `(openingId, fen, expectedUci)`. */
   id: string;
   openingId: string;
-  lineId: string;
-  /** Index of the move the user must produce. Position shown = moves[0..plyIdx). */
-  plyIdx: number;
+  /** FEN of the position the user must respond to. */
+  fen: string;
+  /** UCI of the move the user must play in that position. */
+  expectedUci: string;
 };

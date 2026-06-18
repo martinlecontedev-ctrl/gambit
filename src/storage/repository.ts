@@ -63,9 +63,6 @@ export const openingsRepo = {
 
 export const cardsRepo = {
   list: readCards,
-  forOpening: (openingId: string): Card[] =>
-    readCards().filter(c => c.openingId === openingId),
-  get: (id: string): Card | undefined => readCards().find(c => c.id === id),
   upsert: (card: Card): void => {
     const all = [...readCards()];
     const i = all.findIndex(c => c.id === card.id);

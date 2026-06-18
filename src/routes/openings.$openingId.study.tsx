@@ -15,7 +15,8 @@ import {
   uciToSanAt,
 } from '../domain/chess';
 import { newCardStats, review, type Grade } from '../domain/srs';
-import type { Card, Opening } from '../domain/types';
+import { buildPrefixTrie, type TrieNode } from '../domain/tree';
+import type { Card, CardStats, Opening } from '../domain/types';
 import { cardsRepo, openingsRepo } from '../storage/repository';
 import { useStored } from '../storage/store';
 
@@ -84,37 +85,98 @@ function NothingDue({ openingId }: { openingId: string }) {
   );
 }
 
+function cardIdFor(openingId: string, fen: string, expectedUci: string): string {
+  return `${openingId}::${fen}::${expectedUci}`;
+}
+
+/**
+ * Build the card set for an opening by walking its prefix trie. One card
+ * per `(position, expected user move)` — shared prefixes between lines
+ * collapse into a single card, so no more duplicates for transposing
+ * variants.
+ */
 function buildCards(opening: Opening, stored: Card[]): Card[] {
-  const byId = new Map(stored.map(c => [c.id, c]));
-  const out: Card[] = [];
-  const startsAt = opening.color === 'white' ? 0 : 1;
-  for (const line of opening.lines) {
-    for (let i = startsAt; i < line.moves.length; i += 2) {
-      const id = `${opening.id}:${line.id}:${i}`;
-      out.push(
-        byId.get(id) ?? {
-          ...newCardStats(),
-          id,
-          openingId: opening.id,
-          lineId: line.id,
-          plyIdx: i,
-        },
-      );
+  const trie = buildPrefixTrie(opening.lines);
+
+  // Index stored cards by their effective new ID. Legacy cards (old
+  // `lineId`/`plyIdx` shape) are migrated to the new shape so their SRS
+  // progress survives the model change.
+  const byId = new Map<string, Card>();
+  for (const raw of stored as unknown[]) {
+    if (isLegacyCardShape(raw)) {
+      const migrated = migrateLegacyCard(raw, opening);
+      if (!migrated) continue;
+      const existing = byId.get(migrated.id);
+      if (!existing || migrated.reps > existing.reps) byId.set(migrated.id, migrated);
+    } else if (isCurrentCardShape(raw)) {
+      byId.set(raw.id, raw);
     }
   }
+
+  const userTurnParity = opening.color === 'white' ? 0 : 1;
+  const out: Card[] = [];
+  const seen = new Set<string>();
+
+  const walk = (node: TrieNode, depth: number, chess: Chess) => {
+    if (depth % 2 === userTurnParity) {
+      const fen = fenOf(chess);
+      for (const uci of node.children.keys()) {
+        const id = cardIdFor(opening.id, fen, uci);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        out.push(
+          byId.get(id) ?? {
+            ...newCardStats(),
+            id,
+            openingId: opening.id,
+            fen,
+            expectedUci: uci,
+          },
+        );
+      }
+    }
+    for (const [uci, child] of node.children) {
+      walk(child, depth + 1, applyUci(chess, uci));
+    }
+  };
+
+  walk(trie, 0, chessFromFen(START_FEN));
   return out;
 }
 
-function positionAtCard(opening: Opening, card: Card): { chess: Chess; lastMoveUci?: string } {
-  const line = opening.lines.find(l => l.id === card.lineId);
-  let c = chessFromFen(START_FEN);
-  let last: string | undefined;
-  if (!line) return { chess: c };
-  for (let i = 0; i < card.plyIdx; i++) {
-    last = line.moves[i];
-    c = applyUci(c, last);
-  }
-  return { chess: c, lastMoveUci: last };
+type LegacyCardShape = CardStats & {
+  id: string;
+  openingId: string;
+  lineId: string;
+  plyIdx: number;
+};
+
+function isLegacyCardShape(c: unknown): c is LegacyCardShape {
+  return typeof c === 'object' && c !== null && 'lineId' in c && 'plyIdx' in c;
+}
+
+function isCurrentCardShape(c: unknown): c is Card {
+  return typeof c === 'object' && c !== null && 'fen' in c && 'expectedUci' in c;
+}
+
+function migrateLegacyCard(c: LegacyCardShape, opening: Opening): Card | undefined {
+  const line = opening.lines.find(l => l.id === c.lineId);
+  if (!line || c.plyIdx >= line.moves.length) return undefined;
+  let chess = chessFromFen(START_FEN);
+  for (let i = 0; i < c.plyIdx; i++) chess = applyUci(chess, line.moves[i]);
+  const fen = fenOf(chess);
+  const expectedUci = line.moves[c.plyIdx];
+  return {
+    ease: c.ease,
+    interval: c.interval,
+    reps: c.reps,
+    due: c.due,
+    lapses: c.lapses,
+    id: cardIdFor(opening.id, fen, expectedUci),
+    openingId: c.openingId,
+    fen,
+    expectedUci,
+  };
 }
 
 type Phase = 'awaiting' | 'correct' | 'wrong';
@@ -134,13 +196,11 @@ function StudySession({
   const finished = idx >= queue.length;
   const card = finished ? undefined : queue[idx];
 
-  const { chess, lastMoveUci } = useMemo(
-    () => (card ? positionAtCard(opening, card) : { chess: chessFromFen(START_FEN) }),
-    [opening, card],
+  const chess = useMemo(
+    () => (card ? chessFromFen(card.fen) : chessFromFen(START_FEN)),
+    [card],
   );
-
-  const line = card ? opening.lines.find(l => l.id === card.lineId) : undefined;
-  const expectedUci = card && line ? line.moves[card.plyIdx] : undefined;
+  const expectedUci = card?.expectedUci;
 
   // While the user is being asked the question we show the position before
   // the move. After they answer (right or wrong) we reveal the expected
@@ -150,7 +210,7 @@ function StudySession({
     () => (showAnswer && expectedUci ? applyUci(chess, expectedUci) : chess),
     [chess, showAnswer, expectedUci],
   );
-  const displayLastMove = showAnswer ? expectedUci : lastMoveUci;
+  const displayLastMove = showAnswer ? expectedUci : undefined;
 
   const config: Config = useMemo(() => {
     if (!card) return {};
