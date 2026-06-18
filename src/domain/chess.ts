@@ -68,3 +68,14 @@ export function uciToSanAt(fen: string, uci: string): string {
   if (!m) return uci;
   return makeSanAndPlay(chess, m);
 }
+
+/**
+ * Canonical key for a chess position, ignoring move counters. Keeps the
+ * fields that actually distinguish positions (board, side to move, castling
+ * rights, en passant target) and drops the halfmove/fullmove clocks — those
+ * depend on the move order, not on the resulting position. Two transposing
+ * paths that reach the same setup share the same position key.
+ */
+export function positionKey(fen: string): string {
+  return fen.split(' ').slice(0, 4).join(' ');
+}

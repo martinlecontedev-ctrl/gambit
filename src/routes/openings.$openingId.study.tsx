@@ -10,6 +10,7 @@ import {
   chessFromFen,
   fenOf,
   legalDests,
+  positionKey,
   START_FEN,
   turnColor,
   uciFromMove,
@@ -88,7 +89,10 @@ function NothingDue({ openingId }: { openingId: string }) {
 }
 
 function cardIdFor(openingId: string, fen: string, expectedUci: string): string {
-  return `${openingId}::${fen}::${expectedUci}`;
+  // Use the canonical position key so transpositions collapse into a single
+  // card — two paths that reach the same position with the same expected
+  // user move share one SRS entry.
+  return `${openingId}::${positionKey(fen)}::${expectedUci}`;
 }
 
 /**
@@ -101,8 +105,10 @@ function buildCards(opening: Opening, stored: Card[]): Card[] {
   const trie = buildPrefixTrie(opening.lines);
 
   // Index stored cards by their effective new ID. Legacy cards (old
-  // `lineId`/`plyIdx` shape) are migrated to the new shape so their SRS
-  // progress survives the model change.
+  // `lineId`/`plyIdx` shape) and cards stored under the previous full-FEN
+  // id format both get re-keyed to the canonical position-key id, so
+  // transpositions and prior storage layouts collapse into one entry per
+  // (position, expected move).
   const byId = new Map<string, Card>();
   for (const raw of stored as unknown[]) {
     if (isLegacyCardShape(raw)) {
@@ -111,7 +117,10 @@ function buildCards(opening: Opening, stored: Card[]): Card[] {
       const existing = byId.get(migrated.id);
       if (!existing || migrated.reps > existing.reps) byId.set(migrated.id, migrated);
     } else if (isCurrentCardShape(raw)) {
-      byId.set(raw.id, raw);
+      const newId = cardIdFor(raw.openingId, raw.fen, raw.expectedUci);
+      const updated: Card = newId !== raw.id ? { ...raw, id: newId } : raw;
+      const existing = byId.get(newId);
+      if (!existing || updated.reps > existing.reps) byId.set(newId, updated);
     }
   }
 
@@ -215,10 +224,21 @@ function StudySession({
   const displayLastMove = showAnswer ? expectedUci : undefined;
 
   /** The annotation lives on the position *after* the expected move, so it
-   * comes into view together with the answer reveal. */
+   * comes into view together with the answer reveal. We look it up by the
+   * canonical position key and fall back to any legacy full-FEN entry so
+   * transpositions and pre-migration data both resolve. */
   const annotation = useMemo(() => {
     if (!showAnswer) return undefined;
-    return opening.annotations?.[fenOf(displayChess)];
+    const target = fenOf(displayChess);
+    const key = positionKey(target);
+    const direct = opening.annotations?.[key];
+    if (direct) return direct;
+    if (opening.annotations) {
+      for (const k of Object.keys(opening.annotations)) {
+        if (positionKey(k) === key) return opening.annotations[k];
+      }
+    }
+    return undefined;
   }, [opening.annotations, showAnswer, displayChess]);
 
   const config: Config = useMemo(() => {

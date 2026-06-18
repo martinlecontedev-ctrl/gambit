@@ -11,6 +11,7 @@ import {
   fenOf,
   legalDests,
   lineToSan,
+  positionKey,
   START_FEN,
   turnColor,
   uciFromMove,
@@ -117,7 +118,24 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
   }, [line]);
 
   const currentFen = useMemo(() => fenOf(chess), [chess]);
-  const currentAnnotation = opening.annotations?.[currentFen];
+
+  /**
+   * Annotations re-indexed by canonical position key, so transpositions and
+   * any legacy entries stored under the full FEN all resolve to the same
+   * lookup. Conflicts (rare: two old keys for the same position with
+   * different fields) are merged with later overriding earlier.
+   */
+  const annotationsByPositionKey = useMemo(() => {
+    const m = new Map<string, Annotation>();
+    for (const [k, v] of Object.entries(opening.annotations ?? {})) {
+      const pk = positionKey(k);
+      const existing = m.get(pk);
+      m.set(pk, existing ? { ...existing, ...v } : v);
+    }
+    return m;
+  }, [opening.annotations]);
+
+  const currentAnnotation = annotationsByPositionKey.get(positionKey(currentFen));
 
   /** NAG per ply index in the current line — fed to the scoresheet so the
    * judgement glyph shows next to the move that earned it. */
@@ -127,11 +145,11 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
     for (let i = 0; i < line.moves.length; i++) {
       const f = fenAtPosition.get(i + 1);
       if (!f) continue;
-      const nag = opening.annotations?.[f]?.nag;
+      const nag = annotationsByPositionKey.get(positionKey(f))?.nag;
       if (nag !== undefined) m.set(i, nag);
     }
     return m;
-  }, [line, fenAtPosition, opening.annotations]);
+  }, [line, fenAtPosition, annotationsByPositionKey]);
 
   /**
    * Apply a mutation against the **freshest** opening from storage rather
@@ -146,25 +164,33 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
   };
 
   /**
-   * Apply a partial patch to the annotation at `fen`. The merge happens
-   * against the freshest existing annotation read from the repo, not against
-   * whatever the caller saw in its closure — so two writers updating
-   * different fields of the same annotation (typical: arrows from
-   * chessground vs comment/NAG from the panel) can't clobber each other.
+   * Apply a partial patch to the annotation at `fen`, indexed by the
+   * canonical position key. Any legacy entries that resolve to the same
+   * position key (e.g. transpositions that were stored under the full FEN)
+   * are folded into the merged result and dropped — so the storage
+   * progressively collapses to one entry per position. The merge happens
+   * against the freshest opening read from the repo, not against the
+   * caller's closure, so concurrent writers updating different fields of
+   * the same annotation can't clobber each other.
    */
   const updateAnnotation = (fen: string, patch: Partial<Annotation>) => {
+    const key = positionKey(fen);
     updateOpening(latest => {
-      const existing = latest.annotations?.[fen] ?? {};
+      const next: Record<string, Annotation> = {};
+      let existing: Annotation = {};
+      for (const [k, v] of Object.entries(latest.annotations ?? {})) {
+        if (positionKey(k) === key) {
+          existing = { ...existing, ...v };
+        } else {
+          next[k] = v;
+        }
+      }
       const merged: Annotation = { ...existing, ...patch };
       const isEmpty =
         (!merged.comment || !merged.comment.trim()) &&
         merged.nag === undefined &&
         (!merged.arrows || merged.arrows.length === 0);
-      const next: Record<string, Annotation> = {
-        ...(latest.annotations ?? {}),
-      };
-      if (isEmpty) delete next[fen];
-      else next[fen] = merged;
+      if (!isEmpty) next[key] = merged;
       return { ...latest, annotations: next };
     });
   };
