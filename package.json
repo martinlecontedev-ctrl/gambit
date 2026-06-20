@@ -14,7 +14,8 @@
     "@tanstack/react-router": "^1.95.0",
     "chessops": "^0.14.2",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "stockfish": "^18.0.8"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
@@ -24,6 +25,7 @@
     "@vitejs/plugin-react": "^4.3.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vite-plugin-static-copy": "^3.4.0"
   }
 }

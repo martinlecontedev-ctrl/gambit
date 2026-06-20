@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import type { Chess } from 'chessops/chess';
 import type { Config } from '@lichess-org/chessground/config';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import type { Key } from '@lichess-org/chessground/types';
@@ -19,6 +20,7 @@ import {
   uciFromMove,
   uciToSanAt,
 } from '../domain/chess';
+import { engine, type EngineResult } from '../domain/engine';
 import { NAG_COLORS, NAG_LABELS, NAG_ORDER, NAG_SYMBOLS } from '../domain/nag';
 import { exportToPgn } from '../domain/pgn';
 import {
@@ -178,6 +180,126 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
 
   const currentAnnotation = annotationsByPositionKey.get(positionKey(currentFen));
 
+  // --- Stockfish engine ----------------------------------------------------
+  // Toggle persists across reloads. The Worker is module-level (single
+  // instance for the whole app) and torn down when toggled off or the editor
+  // unmounts, to free its ~50MB working set.
+  const [engineEnabled, setEngineEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('gambit.engine.enabled') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [engineResult, setEngineResult] = useState<EngineResult | null>(null);
+  const [isThinking, setIsThinking] = useState(false);
+
+  const toggleEngine = () => {
+    setEngineEnabled(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('gambit.engine.enabled', next ? '1' : '0');
+      } catch {
+        /* ignored */
+      }
+      return next;
+    });
+  };
+
+  // Engine queue: chains analyses via a Promise so only ONE is in flight at
+  // a time. Rapid navigation just keeps overwriting `wantedFen` — obsolete
+  // chain tasks short-circuit on wake-up without firing engine.analyze. This
+  // is the only design that survives discrete arrow taps (>200ms apart),
+  // which a setTimeout debounce can't coalesce.
+  const wantedFenRef = useRef<string | null>(null);
+  const chainRef = useRef<Promise<void>>(Promise.resolve());
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    // React.StrictMode fires this effect's cleanup once on the development
+    // double-invoke. Without re-setting `mountedRef.current = true` on the
+    // real remount, every subsequent chain task short-circuits on the
+    // `!mountedRef.current` guard and the engine never updates the UI.
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      engine.stop();
+    };
+  }, []);
+
+  const requestEngine = (fen: string | null) => {
+    wantedFenRef.current = fen;
+    const myWanted = fen;
+    chainRef.current = chainRef.current.then(async () => {
+      if (!mountedRef.current) return;
+      if (wantedFenRef.current !== myWanted) return;
+      if (myWanted === null) {
+        setIsThinking(false);
+        return;
+      }
+      try {
+        const result = await engine.analyze(myWanted, {
+          multiPv: 3,
+          depth: 18,
+          movetimeMs: 500,
+        });
+        if (!mountedRef.current) return;
+        if (result.lines.length > 0 && wantedFenRef.current === myWanted) {
+          setEngineResult(result);
+        }
+      } catch {
+        /* engine errored; next request will reboot */
+      }
+      if (mountedRef.current && wantedFenRef.current === myWanted) {
+        setIsThinking(false);
+      }
+    });
+  };
+
+  useEffect(() => {
+    if (!engineEnabled) {
+      engine.stop();
+      setEngineResult(null);
+      setIsThinking(false);
+      requestEngine(null);
+      return;
+    }
+    if (chess.isEnd()) {
+      setIsThinking(false);
+      requestEngine(null);
+      return;
+    }
+    setIsThinking(true);
+    requestEngine(currentFen);
+  }, [engineEnabled, currentFen, chess]);
+
+  const engineAutoShapes: DrawShape[] = useMemo(() => {
+    if (!engineEnabled || !engineResult || engineResult.fen !== currentFen) {
+      return [];
+    }
+    return engineResult.lines.map((l, i) => ({
+      orig: l.uci.slice(0, 2) as Key,
+      dest: l.uci.slice(2, 4) as Key,
+      brush: i === 0 ? 'paleBlue' : 'paleGrey',
+    }));
+  }, [engineEnabled, engineResult, currentFen]);
+
+  const evalText = useMemo<string | null>(() => {
+    if (!engineEnabled) return null;
+    if (!engineResult || engineResult.fen !== currentFen) return null;
+    const best = engineResult.lines[0];
+    if (!best) return null;
+    // chessops/Stockfish report cp/mate from side-to-move POV. Flip to
+    // white-POV so the sign stays stable across plies.
+    const sign = turnColor(chess) === 'white' ? 1 : -1;
+    if (best.mate !== undefined) {
+      const m = best.mate * sign;
+      return m > 0 ? `M${m}` : `−M${-m}`;
+    }
+    const score = ((best.cp ?? 0) * sign) / 100;
+    return (score >= 0 ? '+' : '') + score.toFixed(2);
+  }, [engineEnabled, engineResult, currentFen, chess]);
+
   /** NAG per ply index in the current line — fed to the scoresheet so the
    * judgement glyph shows next to the move that earned it. */
   const nagsAlongLine = useMemo(() => {
@@ -329,6 +451,9 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
         // before we even get to persist the move.
         eraseOnMovablePieceClick: false,
         shapes: storedArrows,
+        // Engine suggestions live here so they never trigger onChange and
+        // never get folded into the persisted annotation arrows.
+        autoShapes: engineAutoShapes,
         onChange: (shapes: DrawShape[]) => {
           const arrows: ArrowDef[] = shapes
             .filter(s => isKnownBrush(s.brush))
@@ -342,7 +467,7 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
       },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chess, opening, line, cursorIdx, selectedLineId, currentAnnotation, currentFen]);
+  }, [chess, opening, line, cursorIdx, selectedLineId, currentAnnotation, currentFen, engineAutoShapes]);
 
   /** Delete a line and re-parent its children to its own parent (no orphans). */
   const deleteLine = (id: string) => {
@@ -393,7 +518,13 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
               {opening.lines.length} ligne{opening.lines.length > 1 ? 's' : ''}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <EngineToggle
+              enabled={engineEnabled}
+              isThinking={isThinking}
+              evalText={evalText}
+              onToggle={toggleEngine}
+            />
             <button
               onClick={removeOpening}
               className="rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-400 hover:border-red-900 hover:text-red-300"
@@ -418,6 +549,13 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
 
         <div className="mx-auto w-full max-w-[560px] space-y-3">
           <div className="relative">
+            {engineEnabled && (
+              <EvalBar
+                result={engineResult}
+                currentFen={currentFen}
+                chess={chess}
+              />
+            )}
             <Chessboard config={config} />
             {currentAnnotation?.nag !== undefined &&
               cursorIdx > 0 &&
@@ -535,6 +673,103 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
         <ExportPgnModal onClose={() => setExportOpen(false)} opening={opening} />
       )}
     </div>
+  );
+}
+
+/**
+ * Vertical white-vs-black bar à la chess.com / lichess. White fills from the
+ * bottom; the boundary moves smoothly as the engine eval changes. Keeps the
+ * last known share when navigating to a position the engine hasn't analyzed
+ * yet, so the bar slides directly from old → new instead of snapping through
+ * neutral.
+ */
+function EvalBar({
+  result,
+  currentFen,
+  chess,
+}: {
+  result: EngineResult | null;
+  currentFen: string;
+  chess: Chess;
+}) {
+  const [whiteShare, setWhiteShare] = useState(0.5);
+
+  useEffect(() => {
+    if (!result || result.fen !== currentFen) return;
+    const best = result.lines[0];
+    if (!best) return;
+    const sign = turnColor(chess) === 'white' ? 1 : -1;
+    let next: number;
+    if (best.mate !== undefined) {
+      const m = best.mate * sign;
+      next = m > 0 ? 0.97 : 0.03;
+    } else {
+      const cp = (best.cp ?? 0) * sign;
+      // tanh squashes wide eval ranges into a comfortable visual band:
+      // cp=200 → ~0.66, cp=600 → ~0.76, cp=1200 → ~0.97.
+      next = 0.5 + Math.tanh(cp / 600) * 0.5;
+      next = Math.max(0.02, Math.min(0.98, next));
+    }
+    setWhiteShare(next);
+  }, [result, currentFen, chess]);
+
+  return (
+    <div className="absolute -left-5 top-0 h-full w-2.5 overflow-hidden rounded-sm bg-zinc-800 ring-1 ring-zinc-700/40">
+      <div
+        className="absolute inset-x-0 bottom-0 bg-zinc-100 transition-[height] duration-500 ease-out"
+        style={{ height: `${whiteShare * 100}%` }}
+      />
+    </div>
+  );
+}
+
+function EngineToggle({
+  enabled,
+  isThinking,
+  evalText,
+  onToggle,
+}: {
+  enabled: boolean;
+  isThinking: boolean;
+  evalText: string | null;
+  onToggle: () => void;
+}) {
+  const score = evalText ?? '';
+  const positive = score.startsWith('+') || score.startsWith('M');
+  return (
+    <button
+      onClick={onToggle}
+      title={
+        enabled
+          ? 'Stockfish actif — clic pour désactiver'
+          : 'Activer Stockfish (analyse + flèches de coups suggérés)'
+      }
+      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${
+        enabled
+          ? 'border-sky-700/60 bg-sky-950/40 text-sky-200 hover:border-sky-600'
+          : 'border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+      }`}
+    >
+      <span className="font-medium">Engine</span>
+      <span
+        className={`h-1.5 w-1.5 rounded-full transition ${
+          enabled
+            ? isThinking
+              ? 'animate-pulse bg-sky-400'
+              : 'bg-sky-400'
+            : 'bg-zinc-600'
+        }`}
+      />
+      {enabled && evalText !== null && (
+        <span
+          className={`font-mono text-xs tabular-nums ${
+            positive ? 'text-emerald-300' : 'text-red-300'
+          }`}
+        >
+          {evalText}
+        </span>
+      )}
+    </button>
   );
 }
 
