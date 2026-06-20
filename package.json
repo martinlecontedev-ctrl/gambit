@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "openings:index": "node scripts/build-openings-index.mjs"
   },
   "dependencies": {
     "@lichess-org/chessground": "^10.1.1",

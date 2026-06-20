@@ -22,6 +22,7 @@ import {
 } from '../domain/chess';
 import { engine, type EngineResult } from '../domain/engine';
 import { NAG_COLORS, NAG_LABELS, NAG_ORDER, NAG_SYMBOLS } from '../domain/nag';
+import { recognizeOpening, type Opening as RecognizedOpening } from '../domain/openings-db';
 import { exportToPgn } from '../domain/pgn';
 import {
   buildPrefixTrie,
@@ -179,6 +180,25 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
   }, [opening.annotations]);
 
   const currentAnnotation = annotationsByPositionKey.get(positionKey(currentFen));
+
+  // --- Opening recognition --------------------------------------------------
+  // Position-based, like lichess/chess.com: we walk the current line up to
+  // the cursor and surface the deepest ECO entry encountered. Position-keyed
+  // lookup means transpositions resolve to the same name.
+  const [recognizedOpening, setRecognizedOpening] = useState<RecognizedOpening | null>(null);
+  useEffect(() => {
+    if (!line) {
+      setRecognizedOpening(null);
+      return;
+    }
+    let cancelled = false;
+    recognizeOpening(line.moves, cursorIdx).then(found => {
+      if (!cancelled) setRecognizedOpening(found);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [line, cursorIdx]);
 
   // --- Stockfish engine ----------------------------------------------------
   // Toggle persists across reloads. The Worker is module-level (single
@@ -507,18 +527,21 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
       <section className="space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <Link to="/" className="text-sm text-zinc-400 hover:text-zinc-100">
-              ← Retour
-            </Link>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight">{opening.name}</h1>
-            <p className="text-sm text-zinc-500">
-              {opening.color === 'white' ? 'Blancs' : 'Noirs'} ·{' '}
-              {opening.lines.length} ligne{opening.lines.length > 1 ? 's' : ''}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+        <header>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <Link to="/" className="text-sm text-zinc-400 hover:text-zinc-100">
+                ← Retour
+              </Link>
+              <h1 className="mt-2 truncate text-2xl font-semibold tracking-tight">
+                {opening.name}
+              </h1>
+              <p className="text-sm text-zinc-500">
+                {opening.color === 'white' ? 'Blancs' : 'Noirs'} ·{' '}
+                {opening.lines.length} ligne{opening.lines.length > 1 ? 's' : ''}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
             <EngineToggle
               enabled={engineEnabled}
               isThinking={isThinking}
@@ -545,7 +568,25 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
               Réviser
             </Link>
           </div>
-        </div>
+          </div>
+          {/* Full-width chip row, always rendered with `invisible` fallback
+              so it never shifts the board vertically. Sitting outside the
+              flex row above lets `truncate` clip long ECO names without
+              forcing horizontal overflow. */}
+          <p
+            className={`mt-1 truncate text-xs text-zinc-500 ${
+              recognizedOpening ? '' : 'invisible'
+            }`}
+            aria-hidden={recognizedOpening ? undefined : true}
+          >
+            <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300">
+              {recognizedOpening?.eco ?? 'A00'}
+            </span>{' '}
+            <span className="italic">
+              {recognizedOpening?.name ?? ' '}
+            </span>
+          </p>
+        </header>
 
         <div className="mx-auto w-full max-w-[560px] space-y-3">
           <div className="relative">

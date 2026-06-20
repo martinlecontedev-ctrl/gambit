@@ -26,6 +26,13 @@ npm run dev
   analyse attend le bestmove de la précédente avant d'envoyer ses commandes.
   Watchdog 5 s qui terminate + reboot transparent en cas d'enlisement.
   Asset wasm copié par `vite-plugin-static-copy` dans `dist/engine/`.
+- **Reconnaissance d'ouvertures** (`src/domain/openings-db.ts`) : index
+  position-keyé du dataset `lichess-org/chess-openings` (3733 entrées,
+  vendoré dans `src/data/eco/`). Pré-compilé en JSON par
+  `npm run openings:index` à chaque refresh du snapshot. Lazy-loaded en
+  chunk séparé (~60 KB gzip). `recognizeOpening(uciMoves, upTo)` renvoie
+  l'entrée ECO la plus profonde atteinte le long de la ligne — chess.com
+  style, transpositions naturellement gérées.
 
 ## Roadmap
 
