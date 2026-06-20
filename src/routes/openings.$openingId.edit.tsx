@@ -100,6 +100,44 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
     [opening.lines],
   );
 
+  // Keyboard navigation through the current line. Skipped when the focus is
+  // inside a text input (annotation textarea, folder rename, etc.) so the
+  // arrows still type / move the caret normally.
+  const lineLength = line?.moves.length ?? 0;
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === 'INPUT' ||
+          t.tagName === 'TEXTAREA' ||
+          t.isContentEditable)
+      ) {
+        return;
+      }
+      switch (e.key) {
+        case 'ArrowLeft':
+          e.preventDefault();
+          setCursorIdx(c => Math.max(0, c - 1));
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          setCursorIdx(c => Math.min(lineLength, c + 1));
+          break;
+        case 'Home':
+          e.preventDefault();
+          setCursorIdx(0);
+          break;
+        case 'End':
+          e.preventDefault();
+          setCursorIdx(lineLength);
+          break;
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [lineLength]);
+
   /** SAN sequence of the selected line. */
   const sansOfSelected = useMemo(
     () => (line ? lineToSan(line.moves) : []),
