@@ -5,6 +5,7 @@ dist
 *.log
 .DS_Store
 .vite
+.tanstack
 *.tsbuildinfo
 src/routeTree.gen.ts
 CLAUDE.md

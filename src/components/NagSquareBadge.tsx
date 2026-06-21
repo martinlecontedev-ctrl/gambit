@@ -26,7 +26,10 @@ export function NagSquareBadge({
   const row = orientation === 'white' ? 7 - rank : rank;
   return (
     <div
-      className="pointer-events-none absolute"
+      // High z-index puts the pill above chessground's pieces, which sit on
+      // their own stacking context — without this, the move's destination
+      // piece always covers the judgement glyph.
+      className="pointer-events-none absolute z-30"
       style={{
         left: `${col * 12.5}%`,
         top: `${row * 12.5}%`,
