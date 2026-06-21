@@ -34,6 +34,7 @@ import type {
   Annotation,
   ArrowBrush,
   ArrowDef,
+  Color,
   Line,
   Nag,
   Opening,
@@ -569,23 +570,28 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
             </Link>
           </div>
           </div>
-          {/* Full-width chip row, always rendered with `invisible` fallback
-              so it never shifts the board vertically. Sitting outside the
-              flex row above lets `truncate` clip long ECO names without
-              forcing horizontal overflow. */}
-          <p
-            className={`mt-1 truncate text-xs text-zinc-500 ${
-              recognizedOpening ? '' : 'invisible'
-            }`}
-            aria-hidden={recognizedOpening ? undefined : true}
-          >
-            <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300">
-              {recognizedOpening?.eco ?? 'A00'}
-            </span>{' '}
-            <span className="italic">
-              {recognizedOpening?.name ?? ' '}
-            </span>
-          </p>
+          {/* Chip row: recognized opening name + YouTube search shortcut.
+              The chip is always rendered (`invisible` fallback) so its
+              appearance never shifts the board. The button sits in the same
+              flex container — `min-w-0 flex-1` on the chip lets `truncate`
+              clip long ECO names instead of forcing horizontal overflow. */}
+          <div className="mt-1 flex items-center gap-2">
+            <p
+              className={`min-w-0 flex-1 truncate text-xs text-zinc-500 ${
+                recognizedOpening ? '' : 'invisible'
+              }`}
+              aria-hidden={recognizedOpening ? undefined : true}
+            >
+              <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300">
+                {recognizedOpening?.eco ?? 'A00'}
+              </span>{' '}
+              <span className="italic">{recognizedOpening?.name ?? ' '}</span>
+            </p>
+            <YoutubeSearchButton
+              opening={recognizedOpening}
+              color={opening.color}
+            />
+          </div>
         </header>
 
         <div className="mx-auto w-full max-w-[560px] space-y-3">
@@ -761,6 +767,57 @@ function EvalBar({
         style={{ height: `${whiteShare * 100}%` }}
       />
     </div>
+  );
+}
+
+/**
+ * YouTube search shortcut shown next to the opening chip. When an opening is
+ * recognized, opens a new tab with a curated search query; otherwise renders
+ * a greyed-out placeholder of the same width so the chip row stays
+ * layout-stable.
+ */
+function YoutubeSearchButton({
+  opening,
+  color,
+}: {
+  opening: RecognizedOpening | null;
+  color: Color;
+}) {
+  const baseClass =
+    'inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition';
+  const icon = (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-3 w-3"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.376.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.546 15.568V8.432L15.818 12z" />
+    </svg>
+  );
+  if (!opening) {
+    return (
+      <span
+        className={`${baseClass} cursor-not-allowed text-zinc-600`}
+        aria-disabled="true"
+        title="Pas d'ouverture reconnue"
+      >
+        {icon} YouTube
+      </span>
+    );
+  }
+  const query = `${opening.name} chess opening ${color}`;
+  const href = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`${baseClass} text-red-500 hover:bg-zinc-800 hover:text-red-400`}
+      title={`Rechercher "${query}" sur YouTube`}
+    >
+      {icon} YouTube
+    </a>
   );
 }
 
