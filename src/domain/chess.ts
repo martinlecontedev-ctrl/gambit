@@ -86,8 +86,18 @@ export function sameMove(chess: Chess, a: string, b: string): boolean {
   return normalizeCastleUci(chess, a) === normalizeCastleUci(chess, b);
 }
 
-export function lineToSan(moves: string[]): string[] {
-  const c = chessFromFen(START_FEN);
+/**
+ * Convert a sequence of UCI moves to SAN. `startFen` is the position the
+ * sequence is anchored on — defaults to the standard initial position, but
+ * Lichess study chapters that begin past the opening (custom `[FEN …]`
+ * header) need to pass the chapter's `startFen`, otherwise chessops returns
+ * `--` placeholders for any move that isn't legal from the initial board.
+ */
+export function lineToSan(
+  moves: string[],
+  startFen: string = START_FEN,
+): string[] {
+  const c = chessFromFen(startFen);
   const out: string[] = [];
   for (const uci of moves) {
     const m = parseUci(uci);

@@ -20,6 +20,7 @@ import type {
   Annotation,
   ArrowBrush,
   ArrowDef,
+  Chapter,
   Color,
   Line,
   Nag,
@@ -140,6 +141,92 @@ export function importFromPgn(pgn: string, color: Color): ImportResult[] {
   return games.map((g, i) => gameToOpening(g, color, i));
 }
 
+/**
+ * Lichess studies serialize as a multi-game PGN where each game is one
+ * chapter. We collapse the whole study into a single Opening whose Chapters
+ * mirror the study's chapters one-to-one — so two repertoire branches that
+ * diverge on one of the user's own moves stay distinct during review, while
+ * still sitting under the same opening on the home. Chapters with no main
+ * line (just headers) are silently dropped.
+ */
+export function importLichessStudy(pgn: string, color: Color): ImportResult {
+  const games = parsePgn(pgn);
+  const now = Date.now();
+  const opening: Opening = {
+    id: crypto.randomUUID(),
+    name: '',
+    color,
+    chapters: [],
+    lines: [],
+    annotations: {},
+    createdAt: now,
+    updatedAt: now,
+  };
+  let studyName: string | undefined;
+
+  for (let i = 0; i < games.length; i++) {
+    const game = games[i];
+    const { name: chapterName, studyName: gameStudy } = openingNameFromHeaders(
+      game.headers,
+      `Chapitre ${i + 1}`,
+    );
+    if (!studyName && gameStudy) studyName = gameStudy;
+    // Lichess marks a custom starting position with `[FEN "…"]` paired with
+    // `[SetUp "1"]`. We accept that FEN as-is and let the chapter's lines
+    // be sequenced from there — matches Lichess's own scoresheet behaviour
+    // where the moves table starts where the chapter starts.
+    const fenHeader = game.headers.get('FEN');
+    const setUp = game.headers.get('SetUp');
+    const startFen =
+      fenHeader && setUp === '1' && fenHeader !== START_FEN
+        ? fenHeader
+        : undefined;
+    const chapter: Chapter = {
+      id: crypto.randomUUID(),
+      name: chapterName,
+      order: opening.chapters.length,
+      ...(startFen ? { startFen } : {}),
+    };
+    const rootLine: Line = {
+      id: crypto.randomUUID(),
+      name: 'Ligne principale',
+      chapterId: chapter.id,
+      moves: [],
+      parentLineId: undefined,
+    };
+    opening.chapters.push(chapter);
+    opening.lines.push(rootLine);
+    processChildren(
+      game.moves,
+      rootLine,
+      chessFromFen(startFen ?? START_FEN),
+      opening,
+    );
+    // Drop the chapter (and its empty root line) if no move stuck — keeps the
+    // study clean when lichess emits placeholder chapters.
+    if (rootLine.moves.length === 0) {
+      opening.chapters.pop();
+      opening.lines.pop();
+    }
+  }
+
+  opening.name = studyName ?? 'Étude Lichess';
+  // Ensure the opening lands with at least one chapter even if everything was
+  // empty — the rest of the app assumes `chapters.length >= 1`.
+  if (opening.chapters.length === 0) {
+    const fallbackChapterId = crypto.randomUUID();
+    opening.chapters.push({ id: fallbackChapterId, name: 'Principal', order: 0 });
+    opening.lines.push({
+      id: crypto.randomUUID(),
+      name: 'Ligne 1',
+      chapterId: fallbackChapterId,
+      moves: [],
+      parentLineId: undefined,
+    });
+  }
+  return { opening, studyName };
+}
+
 function gameToOpening(
   game: Game<PgnNodeData>,
   color: Color,
@@ -150,10 +237,12 @@ function gameToOpening(
     `Importé ${index + 1}`,
   );
   const now = Date.now();
+  const chapterId = crypto.randomUUID();
   const opening: Opening = {
     id: crypto.randomUUID(),
     name,
     color,
+    chapters: [{ id: chapterId, name: 'Principal', order: 0 }],
     lines: [],
     annotations: {},
     createdAt: now,
@@ -162,6 +251,7 @@ function gameToOpening(
   const rootLine: Line = {
     id: crypto.randomUUID(),
     name: 'Ligne 1',
+    chapterId,
     moves: [],
     parentLineId: undefined,
   };
@@ -188,6 +278,7 @@ function processChildren(
     const variantLine: Line = {
       id: crypto.randomUUID(),
       name: 'Variante',
+      chapterId: line.chapterId,
       moves: [...line.moves],
       parentLineId: line.id,
     };

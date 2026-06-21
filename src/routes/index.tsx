@@ -1,7 +1,12 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { Modal } from '../components/Modal';
-import { fetchLichessStudy, importFromPgn, type ImportResult } from '../domain/pgn';
+import {
+  fetchLichessStudy,
+  importFromPgn,
+  importLichessStudy,
+  type ImportResult,
+} from '../domain/pgn';
 import type { Color, Folder, Opening } from '../domain/types';
 import { cardsRepo, foldersRepo, openingsRepo } from '../storage/repository';
 import { useStored } from '../storage/store';
@@ -523,8 +528,13 @@ function ImportModal({ onClose }: { onClose: () => void }) {
     try {
       const pgn = mode === 'lichess' ? await fetchLichessStudy(url) : pgnText;
       if (!pgn.trim()) throw new Error('PGN vide');
-      const results = importFromPgn(pgn, color);
-      const valid = results.filter(r => r.opening.lines[0].moves.length > 0);
+      const results =
+        mode === 'lichess'
+          ? [importLichessStudy(pgn, color)]
+          : importFromPgn(pgn, color);
+      const valid = results.filter(r =>
+        r.opening.lines.some(l => l.moves.length > 0),
+      );
       if (valid.length === 0) throw new Error('Aucune partie avec coups trouvée');
       if (valid.length === 1) {
         openingsRepo.save(valid[0].opening);

@@ -1,9 +1,26 @@
 export type Color = 'white' | 'black';
 
+export type Chapter = {
+  id: string;
+  name: string;
+  /** Display order. Lower = earlier. */
+  order: number;
+  /** Custom starting FEN — only set on Lichess study chapters that use
+   * `[FEN "…"]` + `[SetUp "1"]` headers. `undefined` means the chapter
+   * starts from the standard initial position. Every Line in the chapter
+   * has its `moves` indexed from this position. */
+  startFen?: string;
+};
+
 export type Line = {
   id: string;
   name: string;
-  /** Parent line in the variant tree. `undefined` means root. */
+  /** Chapter the line belongs to. Migration guarantees this is set for every
+   * line; lines whose data predates chapters get re-assigned to the opening's
+   * default "Principal" chapter on read. */
+  chapterId: string;
+  /** Parent line in the variant tree (within the same chapter). `undefined`
+   * means root of its chapter. */
   parentLineId?: string;
   /** UCI moves from the initial position. */
   moves: string[];
@@ -51,8 +68,12 @@ export type Annotation = {
 export type Opening = {
   id: string;
   name: string;
-  /** Color the user plays. Board orientation follows this. */
+  /** Color the user plays. Board orientation follows this. Every chapter of
+   * the opening shares this color. */
   color: Color;
+  /** Always at least one chapter — migration on read creates a default
+   * "Principal" chapter for openings that predate this field. */
+  chapters: Chapter[];
   lines: Line[];
   /** Annotations keyed by the FEN of the position they describe. */
   annotations?: Record<string, Annotation>;
@@ -80,9 +101,13 @@ export type CardStats = {
 };
 
 export type Card = CardStats & {
-  /** Composite ID derived from `(openingId, fen, expectedUci)`. */
+  /** Composite ID derived from `(openingId, chapterId, positionKey, expectedUci)`.
+   * The chapter is part of the key so two chapters with the same position but
+   * different expected user moves stay as separate SRS entries — that's what
+   * lets the user learn divergent repertoire choices without contradictions. */
   id: string;
   openingId: string;
+  chapterId: string;
   /** FEN of the position the user must respond to. */
   fen: string;
   /** UCI of the move the user must play in that position. */

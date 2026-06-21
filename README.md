@@ -15,10 +15,20 @@ npm run dev
 
 - Lignes en **arbre** via `parentLineId`. Une variante = un coup divergent
   joué depuis l'échiquier (pas de bouton "+ Nouvelle").
+- **Chapitres** (`Opening.chapters`) : groupent les lignes pour qu'un
+  répertoire à plusieurs branches ne se mélange pas à la révision. Chaque
+  `Line` porte un `chapterId`. **Règle dure** : un coup divergent joué sur
+  la couleur de l'ouverture force la création d'un nouveau chapitre (modal
+  obligatoire) — c'est ce qui évite les contradictions SRS quand deux sous-
+  répertoires partagent une position. Divergence côté adverse → simple
+  variante dans le chapitre courant. Migration au read (`repository.ts` →
+  `migrateOpening`) crée un chapitre `"Principal"` pour les ouvertures
+  d'avant.
 - **Annotations** indexées par `positionKey(fen)` (4 premiers champs FEN) →
   partagées entre transpositions.
-- **Cartes SRS** : ID `${openingId}::${positionKey}::${expectedUci}`. Deux
-  transpositions = une seule carte.
+- **Cartes SRS** : ID `${openingId}::${chapterId}::${positionKey}::${expectedUci}`.
+  Le chapitre fait partie de la clé pour que deux chapitres avec la même
+  position mais des coups attendus différents restent des entrées distinctes.
 - Repos `localStorage` (`openingsRepo`, `cardsRepo`, `foldersRepo`) avec
   cache + invalidation au write.
 - **Engine** (`src/domain/engine.ts`) : Worker Stockfish singleton, boot
@@ -49,6 +59,14 @@ npm run dev
 - **Sync cloud sans backend** : Gist GitHub ou push API Lichess Study.
 - **Dialog de promotion** (actuellement auto-dame, bloque les lignes
   d'underpromotion).
-- **Stats / progression** : taux de réussite par ouverture, courbe de cartes
-  mûres, heatmap des positions plantées.
+- **Page Profil + stats** (`/profile`) : trois blocs — *Maîtrise* (coups
+  maîtrisés, % du répertoire, en apprentissage, jamais vus), *Performance*
+  (réussite globale, asymétrie Blancs/Noirs, podium top 3 / flop 3
+  pondéré par `masteryPct × successRate`), *Haut faits* (badges à partir
+  du cumul `card.reps` / `card.lapses` / `card.interval`). L'activité
+  temporelle (streak, révisions du jour, heatmap) viendra dans un second
+  temps : nécessite un `reviewsRepo` qui log `{ts, cardId, grade}` à
+  chaque review depuis `study.tsx`. La même route accueillera plus tard
+  une section *Options*. Premier draft fonctionnel rollback ; à
+  reprendre à froid.
 - **Thèmes de board**.

@@ -1,5 +1,31 @@
 import type { Card, Folder, Opening } from '../domain/types';
 
+/**
+ * Bring an opening up to the current shape. Openings stored before the
+ * `chapters` field was introduced get a default "Principal" chapter that
+ * adopts every existing line. Idempotent: re-running on an already-migrated
+ * opening returns it untouched.
+ */
+function migrateOpening(o: Opening): Opening {
+  const hasChapters = Array.isArray(o.chapters) && o.chapters.length > 0;
+  const allLinesHaveChapter =
+    hasChapters && o.lines.every(l => l.chapterId !== undefined);
+  if (hasChapters && allLinesHaveChapter) return o;
+
+  const chapters =
+    hasChapters && o.chapters
+      ? o.chapters
+      : [{ id: crypto.randomUUID(), name: 'Principal', order: 0 }];
+  const fallbackChapterId = chapters[0].id;
+  return {
+    ...o,
+    chapters,
+    lines: o.lines.map(l =>
+      l.chapterId ? l : { ...l, chapterId: fallbackChapterId },
+    ),
+  };
+}
+
 const KEY_OPENINGS = 'gambit.openings';
 const KEY_CARDS = 'gambit.cards';
 const KEY_FOLDERS = 'gambit.folders';
@@ -35,7 +61,9 @@ function read<T>(key: string, fallback: T): T {
 }
 
 function readOpenings(): Opening[] {
-  if (cachedOpenings === null) cachedOpenings = read<Opening[]>(KEY_OPENINGS, []);
+  if (cachedOpenings === null) {
+    cachedOpenings = read<Opening[]>(KEY_OPENINGS, []).map(migrateOpening);
+  }
   return cachedOpenings;
 }
 
@@ -77,6 +105,16 @@ export const cardsRepo = {
     if (i >= 0) all[i] = card;
     else all.push(card);
     localStorage.setItem(KEY_CARDS, JSON.stringify(all));
+    invalidate();
+  },
+  /** Drop every card matching the predicate in one localStorage write. Used
+   * for cascading deletes (chapter removal) without exposing the bulk
+   * storage API to callers. No-op when nothing matches. */
+  dropWhere: (predicate: (c: Card) => boolean): void => {
+    const all = readCards();
+    const remaining = all.filter(c => !predicate(c));
+    if (remaining.length === all.length) return;
+    localStorage.setItem(KEY_CARDS, JSON.stringify(remaining));
     invalidate();
   },
 };

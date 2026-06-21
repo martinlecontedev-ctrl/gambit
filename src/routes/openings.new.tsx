@@ -15,11 +15,15 @@ function NewOpening() {
     if (!name.trim()) return;
     const id = crypto.randomUUID();
     const now = Date.now();
+    const chapterId = crypto.randomUUID();
     const opening: Opening = {
       id,
       name: name.trim(),
       color,
-      lines: [{ id: crypto.randomUUID(), name: 'Ligne 1', moves: [] }],
+      chapters: [{ id: chapterId, name: 'Principal', order: 0 }],
+      lines: [
+        { id: crypto.randomUUID(), name: 'Ligne 1', chapterId, moves: [] },
+      ],
       createdAt: now,
       updatedAt: now,
     };

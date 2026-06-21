@@ -89,27 +89,32 @@ function NothingDue({ openingId }: { openingId: string }) {
   );
 }
 
-function cardIdFor(openingId: string, fen: string, expectedUci: string): string {
-  // Use the canonical position key so transpositions collapse into a single
-  // card — two paths that reach the same position with the same expected
-  // user move share one SRS entry.
-  return `${openingId}::${positionKey(fen)}::${expectedUci}`;
+function cardIdFor(
+  openingId: string,
+  chapterId: string,
+  fen: string,
+  expectedUci: string,
+): string {
+  // Chapter is part of the key so two chapters that diverge on one of the
+  // user's own moves stay as separate SRS entries — required to learn
+  // alternative repertoire choices without contradictions during review.
+  return `${openingId}::${chapterId}::${positionKey(fen)}::${expectedUci}`;
 }
 
 /**
- * Build the card set for an opening by walking its prefix trie. One card
- * per `(position, expected user move)` — shared prefixes between lines
- * collapse into a single card, so no more duplicates for transposing
- * variants.
+ * Build the card set for an opening — one card per
+ * `(chapter, position, expected user move)`. Cards walk the prefix trie of
+ * each chapter's lines independently, so the same position appearing in two
+ * chapters with different expected user moves produces two distinct cards.
  */
 function buildCards(opening: Opening, stored: Card[]): Card[] {
-  const trie = buildPrefixTrie(opening.lines);
+  const fallbackChapterId = opening.chapters[0]?.id;
+  if (!fallbackChapterId) return [];
 
-  // Index stored cards by their effective new ID. Legacy cards (old
-  // `lineId`/`plyIdx` shape) and cards stored under the previous full-FEN
-  // id format both get re-keyed to the canonical position-key id, so
-  // transpositions and prior storage layouts collapse into one entry per
-  // (position, expected move).
+  // Re-key every stored card to the current `${opening}::${chapter}::${posKey}::${uci}`
+  // shape: legacy `lineId/plyIdx` cards locate their chapter via the line they
+  // came from; pre-chapter current-shape cards land in the migrated default
+  // chapter (which the openings repo guarantees exists before this runs).
   const byId = new Map<string, Card>();
   for (const raw of stored as unknown[]) {
     if (isLegacyCardShape(raw)) {
@@ -118,41 +123,62 @@ function buildCards(opening: Opening, stored: Card[]): Card[] {
       const existing = byId.get(migrated.id);
       if (!existing || migrated.reps > existing.reps) byId.set(migrated.id, migrated);
     } else if (isCurrentCardShape(raw)) {
-      const newId = cardIdFor(raw.openingId, raw.fen, raw.expectedUci);
-      const updated: Card = newId !== raw.id ? { ...raw, id: newId } : raw;
+      const chapterId =
+        typeof raw.chapterId === 'string' && raw.chapterId.length > 0
+          ? raw.chapterId
+          : fallbackChapterId;
+      const newId = cardIdFor(raw.openingId, chapterId, raw.fen, raw.expectedUci);
+      const updated: Card =
+        newId !== raw.id || raw.chapterId !== chapterId
+          ? { ...raw, id: newId, chapterId }
+          : raw;
       const existing = byId.get(newId);
       if (!existing || updated.reps > existing.reps) byId.set(newId, updated);
     }
   }
 
-  const userTurnParity = opening.color === 'white' ? 0 : 1;
   const out: Card[] = [];
-  const seen = new Set<string>();
 
-  const walk = (node: TrieNode, depth: number, chess: Chess) => {
-    if (depth % 2 === userTurnParity) {
-      const fen = fenOf(chess);
-      for (const uci of node.children.keys()) {
-        const id = cardIdFor(opening.id, fen, uci);
-        if (seen.has(id)) continue;
-        seen.add(id);
-        out.push(
-          byId.get(id) ?? {
-            ...newCardStats(),
-            id,
-            openingId: opening.id,
-            fen,
-            expectedUci: uci,
-          },
-        );
+  for (const chapter of opening.chapters) {
+    const chapterLines = opening.lines.filter(l => l.chapterId === chapter.id);
+    if (chapterLines.length === 0) continue;
+    const trie = buildPrefixTrie(chapterLines);
+    const seen = new Set<string>();
+    const startFen = chapter.startFen ?? START_FEN;
+    const startChess = chessFromFen(startFen);
+    // The user-turn parity depends on whose move it is at the chapter's
+    // starting position — a chapter that starts with black to move flips
+    // every depth-vs-side relationship.
+    const userTurnParity =
+      turnColor(startChess) === opening.color ? 0 : 1;
+
+    const walk = (node: TrieNode, depth: number, chess: Chess) => {
+      if (depth % 2 === userTurnParity) {
+        const fen = fenOf(chess);
+        for (const uci of node.children.keys()) {
+          const id = cardIdFor(opening.id, chapter.id, fen, uci);
+          if (seen.has(id)) continue;
+          seen.add(id);
+          out.push(
+            byId.get(id) ?? {
+              ...newCardStats(),
+              id,
+              openingId: opening.id,
+              chapterId: chapter.id,
+              fen,
+              expectedUci: uci,
+            },
+          );
+        }
       }
-    }
-    for (const [uci, child] of node.children) {
-      walk(child, depth + 1, applyUci(chess, uci));
-    }
-  };
+      for (const [uci, child] of node.children) {
+        walk(child, depth + 1, applyUci(chess, uci));
+      }
+    };
 
-  walk(trie, 0, chessFromFen(START_FEN));
+    walk(trie, 0, startChess);
+  }
+
   return out;
 }
 
@@ -167,14 +193,17 @@ function isLegacyCardShape(c: unknown): c is LegacyCardShape {
   return typeof c === 'object' && c !== null && 'lineId' in c && 'plyIdx' in c;
 }
 
-function isCurrentCardShape(c: unknown): c is Card {
+type CurrentCardLike = Card & { chapterId?: string };
+
+function isCurrentCardShape(c: unknown): c is CurrentCardLike {
   return typeof c === 'object' && c !== null && 'fen' in c && 'expectedUci' in c;
 }
 
 function migrateLegacyCard(c: LegacyCardShape, opening: Opening): Card | undefined {
   const line = opening.lines.find(l => l.id === c.lineId);
   if (!line || c.plyIdx >= line.moves.length) return undefined;
-  let chess = chessFromFen(START_FEN);
+  const chapter = opening.chapters.find(ch => ch.id === line.chapterId);
+  let chess = chessFromFen(chapter?.startFen ?? START_FEN);
   for (let i = 0; i < c.plyIdx; i++) chess = applyUci(chess, line.moves[i]);
   const fen = fenOf(chess);
   const expectedUci = line.moves[c.plyIdx];
@@ -184,8 +213,9 @@ function migrateLegacyCard(c: LegacyCardShape, opening: Opening): Card | undefin
     reps: c.reps,
     due: c.due,
     lapses: c.lapses,
-    id: cardIdFor(opening.id, fen, expectedUci),
+    id: cardIdFor(opening.id, line.chapterId, fen, expectedUci),
     openingId: c.openingId,
+    chapterId: line.chapterId,
     fen,
     expectedUci,
   };
@@ -213,6 +243,17 @@ function StudySession({
     [card],
   );
   const expectedUci = card?.expectedUci;
+
+  /** Chapter the current card lives in. Surfaced in the right panel so the
+   * user always knows which storyline they're being tested on — a card from
+   * the "Najdorf English" chapter shouldn't be answered with the move from
+   * the "Najdorf Be3" chapter. */
+  const currentChapterName = useMemo(() => {
+    if (!card) return null;
+    return (
+      opening.chapters.find(c => c.id === card.chapterId)?.name ?? null
+    );
+  }, [card, opening.chapters]);
 
   // While the user is being asked the question we show the position before
   // the move. After they answer (right or wrong) we reveal the expected
@@ -353,6 +394,11 @@ function StudySession({
           <h2 className="text-sm font-semibold tracking-wide text-zinc-300">
             {opening.name}
           </h2>
+          {currentChapterName && (
+            <p className="mt-1 truncate text-xs text-zinc-300" title={currentChapterName}>
+              {currentChapterName}
+            </p>
+          )}
           <p className="mt-1 text-xs text-zinc-500">
             {opening.color === 'white' ? 'Trait aux blancs' : 'Trait aux noirs'}
           </p>

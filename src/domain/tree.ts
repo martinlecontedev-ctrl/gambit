@@ -2,12 +2,16 @@ import type { Line } from './types';
 
 /**
  * Effective parent of a line in the variant tree. Honors the explicit
- * `parentLineId`; for legacy data with multiple roots, treats every root
- * past the first as a child of the first root.
+ * `parentLineId`; for legacy data with multiple roots within the same chapter
+ * (e.g. pre-chapter migrations), treats every root past the first as a child
+ * of the first root. Roots from other chapters are never linked together —
+ * chapters are independent storylines.
  */
 export function effectiveParentId(lines: Line[], line: Line): string | undefined {
   if (line.parentLineId) return line.parentLineId;
-  const roots = lines.filter(l => !l.parentLineId);
+  const roots = lines.filter(
+    l => !l.parentLineId && l.chapterId === line.chapterId,
+  );
   if (roots.length <= 1) return undefined;
   if (roots[0].id === line.id) return undefined;
   return roots[0].id;

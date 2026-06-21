@@ -34,12 +34,13 @@ import type {
   Annotation,
   ArrowBrush,
   ArrowDef,
+  Chapter,
   Color,
   Line,
   Nag,
   Opening,
 } from '../domain/types';
-import { openingsRepo } from '../storage/repository';
+import { cardsRepo, openingsRepo } from '../storage/repository';
 import { useStored } from '../storage/store';
 
 const KNOWN_BRUSHES: ArrowBrush[] = [
@@ -90,18 +91,34 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
 
   const line = opening.lines.find(l => l.id === selectedLineId);
 
+  /** Chapter the user is currently working in. Drives the per-chapter trie,
+   * the visible scoresheet and where new variants land. */
+  const currentChapterId = line?.chapterId ?? opening.chapters[0]?.id;
+  const currentChapter = opening.chapters.find(c => c.id === currentChapterId);
+  /** Starting position the chapter's lines are sequenced from. Lichess study
+   * chapters often start past the initial position via `[FEN …]`. */
+  const chapterStartFen = currentChapter?.startFen ?? START_FEN;
+
+  const chapterLines = useMemo(
+    () =>
+      currentChapterId
+        ? opening.lines.filter(l => l.chapterId === currentChapterId)
+        : [],
+    [opening.lines, currentChapterId],
+  );
+
   const chess = useMemo(() => {
-    let c = chessFromFen(START_FEN);
+    let c = chessFromFen(chapterStartFen);
     const upTo = line?.moves.slice(0, cursorIdx) ?? [];
     for (const m of upTo) c = applyUci(c, m);
     return c;
-  }, [line, cursorIdx]);
+  }, [line, cursorIdx, chapterStartFen]);
 
-  const trie = useMemo(() => buildPrefixTrie(opening.lines), [opening.lines]);
+  const trie = useMemo(() => buildPrefixTrie(chapterLines), [chapterLines]);
 
   const rootLine = useMemo(
-    () => opening.lines.find(l => !effectiveParentId(opening.lines, l)),
-    [opening.lines],
+    () => chapterLines.find(l => !effectiveParentId(chapterLines, l)),
+    [chapterLines],
   );
 
   // Keyboard navigation through the current line. Skipped when the focus is
@@ -142,17 +159,19 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [lineLength]);
 
-  /** SAN sequence of the selected line. */
+  /** SAN sequence of the selected line — sequenced from the chapter's
+   * starting FEN so custom-start Lichess chapters resolve correctly. */
   const sansOfSelected = useMemo(
-    () => (line ? lineToSan(line.moves) : []),
-    [line],
+    () => (line ? lineToSan(line.moves, chapterStartFen) : []),
+    [line, chapterStartFen],
   );
 
   /** FEN at each cursor position along the selected line — used to render
-   * chip SAN for alternative continuations seen in sibling lines. */
+   * chip SAN for alternative continuations seen in sibling lines. Honours
+   * the chapter's custom starting FEN. */
   const fenAtPosition = useMemo(() => {
     const m = new Map<number, string>();
-    let chess = chessFromFen(START_FEN);
+    let chess = chessFromFen(chapterStartFen);
     m.set(0, fenOf(chess));
     if (!line) return m;
     for (let i = 0; i < line.moves.length; i++) {
@@ -160,7 +179,7 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
       m.set(i + 1, fenOf(chess));
     }
     return m;
-  }, [line]);
+  }, [line, chapterStartFen]);
 
   const currentFen = useMemo(() => fenOf(chess), [chess]);
 
@@ -193,13 +212,13 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
       return;
     }
     let cancelled = false;
-    recognizeOpening(line.moves, cursorIdx).then(found => {
+    recognizeOpening(line.moves, cursorIdx, chapterStartFen).then(found => {
       if (!cancelled) setRecognizedOpening(found);
     });
     return () => {
       cancelled = true;
     };
-  }, [line, cursorIdx]);
+  }, [line, cursorIdx, chapterStartFen]);
 
   // --- Stockfish engine ----------------------------------------------------
   // Toggle persists across reloads. The Worker is module-level (single
@@ -379,6 +398,15 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
     });
   };
 
+  /** Pending "create a new chapter" prompt. Non-null means the modal is
+   * open: `seedMoves` is what the new chapter's root line will hold (empty
+   * for manual creation, or the full move sequence up to a forced fork);
+   * `defaultName` is what we prefill into the name input. */
+  const [chapterModal, setChapterModal] = useState<{
+    seedMoves: string[];
+    defaultName: string;
+  } | null>(null);
+
   const playMove = (uci: string) => {
     if (!line) return;
     if (line.moves[cursorIdx] && sameMove(chess, line.moves[cursorIdx], uci)) {
@@ -405,9 +433,13 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
     }
 
     const prefix = latestLine.moves.slice(0, cursorIdx);
+    // Siblings only count within the same chapter — switching to a "sibling"
+    // line from another chapter would silently jump the user out of their
+    // current storyline.
     const existing = latest.lines.find(
       l =>
         l.id !== latestLine.id &&
+        l.chapterId === latestLine.chapterId &&
         l.moves.length > cursorIdx &&
         l.moves[cursorIdx] === uci &&
         prefix.every((m, i) => l.moves[i] === m),
@@ -418,10 +450,42 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
       return;
     }
 
-    const parent = parentForNewVariant(latest.lines, latestLine, cursorIdx);
+    // A divergent move played on the user's own colour means they're picking
+    // a different repertoire choice — that needs to live in its own chapter
+    // so the SRS doesn't end up with two contradictory cards for the same
+    // position. Stash the move and pop the naming modal; nothing is written
+    // until the user confirms. The suggested name combines the recognized
+    // ECO name at the divergence position with the SAN of the new move,
+    // e.g. "King's Knight Opening: Normal Variation 3. Nc3"; the user just
+    // hits Enter for the common case. Falls back to the current chapter
+    // name when the position isn't in the ECO dataset.
+    if (turnColor(chess) === opening.color) {
+      // chess.fullmoves + turnColor(chess) reflect the real move number and
+      // side at the current position even when the chapter started past the
+      // initial position (custom Lichess FEN).
+      const moveNum = chess.fullmoves;
+      const isWhite = turnColor(chess) === 'white';
+      const san = uciToSanAt(currentFen, uci);
+      const moveLabel = isWhite ? `${moveNum}. ${san}` : `${moveNum}... ${san}`;
+      const stem =
+        recognizedOpening?.name ??
+        latest.chapters.find(c => c.id === latestLine.chapterId)?.name ??
+        '';
+      const defaultName = stem ? `${stem} ${moveLabel}` : moveLabel;
+      setChapterModal({ seedMoves: [...prefix, uci], defaultName });
+      return;
+    }
+
+    // Opponent-side divergence: still just a variant in the current chapter.
+    const parent = parentForNewVariant(
+      latest.lines.filter(l => l.chapterId === latestLine.chapterId),
+      latestLine,
+      cursorIdx,
+    );
     const variant: Line = {
       id: crypto.randomUUID(),
       name: 'Variante',
+      chapterId: latestLine.chapterId,
       parentLineId: parent.id,
       moves: [...prefix, uci],
     };
@@ -432,6 +496,51 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
     });
     setSelectedLineId(variant.id);
     setCursorIdx(prefix.length + 1);
+  };
+
+  /** Commit the pending "new chapter" prompt: append a fresh Chapter + a root
+   * Line seeded with whatever moves the modal carried, then jump the cursor
+   * into the new chapter. */
+  const confirmNewChapter = (name: string) => {
+    if (!chapterModal) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const latest = openingsRepo.get(opening.id);
+    if (!latest) {
+      setChapterModal(null);
+      return;
+    }
+    // A FORCED fork on a custom-start chapter (e.g. user diverges inside a
+    // Scotch line that already begins after `3.d4`) inherits the starting
+    // FEN — the seedMoves are sequenced from there and need to replay
+    // correctly. A MANUAL "+ Nouveau chapitre" always resets to the
+    // standard initial position so the user gets a fresh board ready for
+    // their colour to move; otherwise inheriting a black-to-move custom
+    // FEN would lock the board when the user expects to start fresh.
+    const isForcedFork = chapterModal.seedMoves.length > 0;
+    const inheritedStartFen = isForcedFork ? currentChapter?.startFen : undefined;
+    const chapter: Chapter = {
+      id: crypto.randomUUID(),
+      name: trimmed,
+      order: latest.chapters.length,
+      ...(inheritedStartFen ? { startFen: inheritedStartFen } : {}),
+    };
+    const rootLine: Line = {
+      id: crypto.randomUUID(),
+      name: 'Ligne principale',
+      chapterId: chapter.id,
+      parentLineId: undefined,
+      moves: [...chapterModal.seedMoves],
+    };
+    openingsRepo.save({
+      ...latest,
+      chapters: [...latest.chapters, chapter],
+      lines: [...latest.lines, rootLine],
+      updatedAt: Date.now(),
+    });
+    setSelectedLineId(rootLine.id);
+    setCursorIdx(rootLine.moves.length);
+    setChapterModal(null);
   };
 
   const config: Config = useMemo(() => {
@@ -525,8 +634,111 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
   const canDeleteVariant = !!line && line.id !== rootLine?.id;
   const [exportOpen, setExportOpen] = useState(false);
 
+  const sortedChapters = useMemo(
+    () => [...opening.chapters].sort((a, b) => a.order - b.order),
+    [opening.chapters],
+  );
+
+  /** Jump to a chapter's root line, cursor at the start. */
+  const switchToChapter = (chapterId: string) => {
+    if (chapterId === currentChapterId) return;
+    const chapterLinesInTarget = opening.lines.filter(
+      l => l.chapterId === chapterId,
+    );
+    const root =
+      chapterLinesInTarget.find(
+        l => !effectiveParentId(chapterLinesInTarget, l),
+      ) ?? chapterLinesInTarget[0];
+    if (!root) return;
+    setSelectedLineId(root.id);
+    setCursorIdx(0);
+  };
+
+  // --- Chapter rename / delete --------------------------------------------
+  const [renamingChapterId, setRenamingChapterId] = useState<string | undefined>();
+  const [chapterRenameDraft, setChapterRenameDraft] = useState('');
+
+  const submitChapterRename = (chapterId: string) => {
+    const trimmed = chapterRenameDraft.trim();
+    setRenamingChapterId(undefined);
+    setChapterRenameDraft('');
+    if (!trimmed) return;
+    updateOpening(latest => ({
+      ...latest,
+      chapters: latest.chapters.map(c =>
+        c.id === chapterId ? { ...c, name: trimmed } : c,
+      ),
+    }));
+  };
+
+  const deleteChapter = (chapter: Chapter) => {
+    const latest = openingsRepo.get(opening.id);
+    if (!latest) return;
+    if (latest.chapters.length <= 1) {
+      alert("Impossible de supprimer le dernier chapitre d'une ouverture.");
+      return;
+    }
+    const linesInChapter = latest.lines.filter(l => l.chapterId === chapter.id);
+    const message =
+      `Supprimer le chapitre "${chapter.name}" ?` +
+      (linesInChapter.length > 0
+        ? `\n\n⚠️  ${linesInChapter.length} ligne${
+            linesInChapter.length > 1 ? 's' : ''
+          } et toutes les cartes de révision liées seront supprimées.`
+        : '') +
+      `\n\nCette action est définitive.`;
+    if (!confirm(message)) return;
+    openingsRepo.save({
+      ...latest,
+      chapters: latest.chapters.filter(c => c.id !== chapter.id),
+      lines: latest.lines.filter(l => l.chapterId !== chapter.id),
+      updatedAt: Date.now(),
+    });
+    cardsRepo.dropWhere(
+      c => c.openingId === opening.id && c.chapterId === chapter.id,
+    );
+    // The selected-line useEffect will pick the first remaining line on the
+    // next render if we just deleted the current chapter.
+  };
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
+    <div className="grid gap-6 lg:grid-cols-[220px_1fr_400px]">
+      <aside className="flex flex-col gap-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+          Chapitres
+        </h2>
+        <ul className="flex flex-col gap-1">
+          {sortedChapters.map(c => (
+            <li key={c.id}>
+              <ChapterItem
+                chapter={c}
+                active={c.id === currentChapterId}
+                canDelete={opening.chapters.length > 1}
+                renaming={renamingChapterId === c.id}
+                renameDraft={chapterRenameDraft}
+                onSelect={() => switchToChapter(c.id)}
+                onRenameStart={() => {
+                  setRenamingChapterId(c.id);
+                  setChapterRenameDraft(c.name);
+                }}
+                onRenameChange={setChapterRenameDraft}
+                onRenameSubmit={() => submitChapterRename(c.id)}
+                onRenameCancel={() => {
+                  setRenamingChapterId(undefined);
+                  setChapterRenameDraft('');
+                }}
+                onDelete={() => deleteChapter(c)}
+              />
+            </li>
+          ))}
+        </ul>
+        <button
+          onClick={() => setChapterModal({ seedMoves: [], defaultName: '' })}
+          className="mt-1 rounded-md border border-dashed border-zinc-700 px-2 py-1.5 text-xs text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200"
+        >
+          + Nouveau chapitre
+        </button>
+      </aside>
       <section className="space-y-4">
         <header>
           <div className="flex items-start justify-between gap-4">
@@ -642,6 +854,7 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
                 trie={trie}
                 cursorIdx={cursorIdx}
                 nagsAlongLine={nagsAlongLine}
+                startFen={chapterStartFen}
                 onSetCursor={pos => setCursorIdx(pos)}
                 onSwitchLine={(lineId, pos) => {
                   setSelectedLineId(lineId);
@@ -716,6 +929,15 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
         </div>
       </aside>
 
+      {chapterModal && (
+        <ChapterNameModal
+          forced={chapterModal.seedMoves.length > 0}
+          defaultName={chapterModal.defaultName}
+          onConfirm={confirmNewChapter}
+          onCancel={() => setChapterModal(null)}
+        />
+      )}
+
       {exportOpen && (
         <ExportPgnModal onClose={() => setExportOpen(false)} opening={opening} />
       )}
@@ -730,6 +952,152 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
  * yet, so the bar slides directly from old → new instead of snapping through
  * neutral.
  */
+function ChapterItem({
+  chapter,
+  active,
+  canDelete,
+  renaming,
+  renameDraft,
+  onSelect,
+  onRenameStart,
+  onRenameChange,
+  onRenameSubmit,
+  onRenameCancel,
+  onDelete,
+}: {
+  chapter: Chapter;
+  active: boolean;
+  canDelete: boolean;
+  renaming: boolean;
+  renameDraft: string;
+  onSelect: () => void;
+  onRenameStart: () => void;
+  onRenameChange: (v: string) => void;
+  onRenameSubmit: () => void;
+  onRenameCancel: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      className={`group relative rounded-md transition ${
+        active ? 'bg-zinc-800' : 'hover:bg-zinc-900'
+      }`}
+    >
+      {renaming ? (
+        <input
+          autoFocus
+          value={renameDraft}
+          onChange={e => onRenameChange(e.target.value)}
+          onBlur={onRenameSubmit}
+          onKeyDown={e => {
+            if (e.key === 'Enter') onRenameSubmit();
+            if (e.key === 'Escape') onRenameCancel();
+          }}
+          className="w-full rounded-md bg-transparent px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+        />
+      ) : (
+        <button
+          onClick={onSelect}
+          title={chapter.name}
+          className={`block w-full truncate rounded-md px-3 py-2 text-left text-sm transition ${
+            active ? 'text-zinc-100' : 'text-zinc-300 hover:text-zinc-100'
+          }`}
+        >
+          {chapter.name}
+        </button>
+      )}
+      {!renaming && (
+        <div className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-zinc-700 px-1 py-0.5 opacity-0 shadow-sm ring-1 ring-zinc-600/60 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+          <button
+            onClick={e => {
+              e.stopPropagation();
+              onRenameStart();
+            }}
+            title="Renommer"
+            className="rounded p-1 text-xs text-zinc-300 transition hover:bg-zinc-600 hover:text-zinc-50"
+          >
+            ✎
+          </button>
+          {canDelete && (
+            <button
+              onClick={e => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              title="Supprimer le chapitre"
+              className="rounded p-1 text-xs text-zinc-300 transition hover:bg-red-900/60 hover:text-red-200"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChapterNameModal({
+  forced,
+  defaultName,
+  onConfirm,
+  onCancel,
+}: {
+  forced: boolean;
+  defaultName: string;
+  onConfirm: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(defaultName);
+  // Select the prefilled text on first focus so a single keypress overwrites
+  // the suggestion when the user wants a different name.
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    inputRef.current?.select();
+  }, []);
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onConfirm(trimmed);
+  };
+  return (
+    <Modal open onClose={onCancel} title="Nouveau chapitre">
+      <form onSubmit={submit} className="space-y-3">
+        <p className="text-xs text-zinc-500">
+          {forced
+            ? 'Tu joues un coup différent sur ta couleur. Donne un nom au chapitre qui va porter cette variante — la révision saura ainsi quelle théorie tu veux driller.'
+            : 'Crée un chapitre vide pour ranger une nouvelle ligne.'}
+        </p>
+        <input
+          ref={inputRef}
+          type="text"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="Ex. Najdorf — Anglaise"
+          autoFocus
+          className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-zinc-600 focus:outline-none"
+        />
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100"
+          >
+            Annuler
+          </button>
+          <button
+            type="submit"
+            disabled={!name.trim()}
+            className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Créer le chapitre
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function EvalBar({
   result,
   currentFen,
@@ -933,6 +1301,10 @@ type SelectedLineProps = {
   trie: TrieRoot;
   cursorIdx: number;
   nagsAlongLine: Map<number, Nag>;
+  /** Starting FEN for the chapter the selected line belongs to. Drives the
+   * move numbers and the white/black column assignment when a chapter
+   * starts past the initial position. */
+  startFen: string;
   onSetCursor: (pos: number) => void;
   onSwitchLine: (lineId: string, pos: number) => void;
 };
@@ -951,9 +1323,22 @@ function SelectedLineView({
   trie,
   cursorIdx,
   nagsAlongLine,
+  startFen,
   onSetCursor,
   onSwitchLine,
 }: SelectedLineProps) {
+  // Read the starting fullmove number and side-to-move from the chapter's
+  // starting FEN. A chapter that begins after `3.d4` (black to move at
+  // fullmove 3) needs to label its first move "3..." and reserve an empty
+  // white cell on the first row.
+  const startMeta = useMemo(() => {
+    const c = chessFromFen(startFen);
+    return {
+      fullmove: c.fullmoves,
+      startsBlack: turnColor(c) === 'black',
+    };
+  }, [startFen]);
+
   if (line.moves.length === 0) {
     return (
       <div className="py-3 font-mono text-sm">
@@ -971,54 +1356,68 @@ function SelectedLineView({
     );
   }
 
+  const offset = startMeta.startsBlack ? 1 : 0;
   const tailPos = line.moves.length;
   const trailing = continuationsAt(trie, line, tailPos);
-  const totalPairs = Math.ceil(line.moves.length / 2);
-  // If the line ends after black (even total length) and there's still a known
-  // continuation, we need a fresh row for that trailing white chip.
-  const needsTrailingRow = trailing.length > 0 && tailPos % 2 === 0;
-  const pairsToRender = totalPairs + (needsTrailingRow ? 1 : 0);
+  const totalRows = Math.ceil((line.moves.length + offset) / 2);
+  // The next move would be white when the count of slots so far (offset +
+  // plies) is even — that's when we need a fresh row to host a trailing
+  // white chip from an alternative continuation.
+  const nextSideIsWhite = (line.moves.length + offset) % 2 === 0;
+  const needsTrailingRow = trailing.length > 0 && nextSideIsWhite;
+  const rowsToRender = totalRows + (needsTrailingRow ? 1 : 0);
 
   const rows: React.ReactNode[] = [];
-  for (let pairIdx = 0; pairIdx < pairsToRender; pairIdx++) {
-    const moveNum = pairIdx + 1;
-    const whitePos = pairIdx * 2;
-    const blackPos = whitePos + 1;
-    const isEven = pairIdx % 2 === 0;
+  for (let rowIdx = 0; rowIdx < rowsToRender; rowIdx++) {
+    const fullmove = startMeta.fullmove + rowIdx;
+    // `whitePly` is `-1` for the first row when the chapter starts on
+    // black's move — we render an empty placeholder cell so the column
+    // grid stays aligned with the number column.
+    const whitePly = rowIdx * 2 - offset;
+    const blackPly = whitePly + 1;
+    const isEven = rowIdx % 2 === 0;
 
     rows.push(
-      <Fragment key={pairIdx}>
+      <Fragment key={rowIdx}>
         <div
           className={`select-none px-3 py-1.5 text-right text-zinc-500 ${
             isEven ? 'bg-zinc-900/30' : ''
           }`}
         >
-          {moveNum}.
+          {fullmove}.
         </div>
+        {whitePly >= 0 ? (
+          <MoveCell
+            line={line}
+            sans={sans}
+            pos={whitePly}
+            tailPos={tailPos}
+            trie={trie}
+            trailing={trailing}
+            fenAtPosition={fenAtPosition}
+            cursorIdx={cursorIdx}
+            nag={nagsAlongLine.get(whitePly)}
+            onSetCursor={onSetCursor}
+            onSwitchLine={onSwitchLine}
+            shaded={isEven}
+          />
+        ) : (
+          <div
+            className={`border-l border-zinc-800/60 px-3 py-1.5 ${
+              isEven ? 'bg-zinc-900/30' : ''
+            }`}
+          />
+        )}
         <MoveCell
           line={line}
           sans={sans}
-          pos={whitePos}
+          pos={blackPly}
           tailPos={tailPos}
           trie={trie}
           trailing={trailing}
           fenAtPosition={fenAtPosition}
           cursorIdx={cursorIdx}
-          nag={nagsAlongLine.get(whitePos)}
-          onSetCursor={onSetCursor}
-          onSwitchLine={onSwitchLine}
-          shaded={isEven}
-        />
-        <MoveCell
-          line={line}
-          sans={sans}
-          pos={blackPos}
-          tailPos={tailPos}
-          trie={trie}
-          trailing={trailing}
-          fenAtPosition={fenAtPosition}
-          cursorIdx={cursorIdx}
-          nag={nagsAlongLine.get(blackPos)}
+          nag={nagsAlongLine.get(blackPly)}
           onSetCursor={onSetCursor}
           onSwitchLine={onSwitchLine}
           shaded={isEven}

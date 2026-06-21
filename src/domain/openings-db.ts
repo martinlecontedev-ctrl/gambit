@@ -33,13 +33,20 @@ function load(): Promise<Index> {
  * deepest opening name reached — matching the chess.com / lichess behaviour
  * during analysis. Returns `null` if no position along the way is in the
  * dataset (e.g. the user is in a novelty past the known theory).
+ *
+ * `startFen` defaults to the standard initial position. Lichess study
+ * chapters that begin past the opening pass their `chapter.startFen` here
+ * so the move sequence resolves against the right board — otherwise
+ * `applyUci` would replay illegal moves from the wrong starting position
+ * and the recognizer would never match a dataset entry.
  */
 export async function recognizeOpening(
   uciMoves: string[],
   upTo: number,
+  startFen: string = START_FEN,
 ): Promise<Opening | null> {
   const db = await load();
-  let chess = chessFromFen(START_FEN);
+  let chess = chessFromFen(startFen);
   let best: Opening | null = db[positionKey(fenOf(chess))] ?? null;
   const plies = Math.min(upTo, uciMoves.length);
   for (let i = 0; i < plies; i++) {
