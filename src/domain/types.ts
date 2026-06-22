@@ -83,6 +83,21 @@ export type Opening = {
   updatedAt: number;
 };
 
+/**
+ * One logged review action. Append-only history (pruned by age) that backs the
+ * exact "done today" count, and later the login streak and activity heatmap.
+ * Every grade is logged — failures included — so consumers decide what counts.
+ */
+export type ReviewEvent = {
+  /** When the grade was submitted (ms since epoch). */
+  ts: number;
+  /** The reviewed card's composite id. */
+  cardId: string;
+  openingId: string;
+  /** SM-2 grade 0..5 submitted by the user. */
+  grade: number;
+};
+
 /** Flat (non-nested) folder used to group openings on the home. */
 export type Folder = {
   id: string;

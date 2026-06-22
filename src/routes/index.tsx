@@ -7,8 +7,15 @@ import {
   importLichessStudy,
   type ImportResult,
 } from '../domain/pgn';
-import type { Color, Folder, Opening } from '../domain/types';
-import { cardsRepo, foldersRepo, openingsRepo } from '../storage/repository';
+import { reviewsToday } from '../domain/activity';
+import { openingStats, type OpeningStats } from '../domain/cards';
+import type { Card, Color, Folder, Opening } from '../domain/types';
+import {
+  cardsRepo,
+  foldersRepo,
+  openingsRepo,
+  reviewsRepo,
+} from '../storage/repository';
 import { useStored } from '../storage/store';
 
 export const Route = createFileRoute('/')({ component: Home });
@@ -20,6 +27,7 @@ function Home() {
   const openings = useStored(() => openingsRepo.list());
   const cards = useStored(() => cardsRepo.list());
   const folders = useStored(() => foldersRepo.list());
+  const reviews = useStored(() => reviewsRepo.list());
   const [importOpen, setImportOpen] = useState(false);
   const [selectedFolder, setSelectedFolder] = useState<FolderFilter>('none');
   const [draggedOpeningId, setDraggedOpeningId] = useState<string | undefined>();
@@ -33,19 +41,61 @@ function Home() {
     }
   }, [folders, selectedFolder]);
 
-  const now = Date.now();
-  const dueByOpening = useMemo(() => {
-    const m = new Map<string, number>();
+  // Freeze "now" for the mount so per-opening stats don't recompute on every
+  // re-render (drag hover state churns Home constantly); buildCards walks each
+  // chapter's trie and is not free.
+  const now = useMemo(() => Date.now(), []);
+
+  const cardsByOpening = useMemo(() => {
+    const m = new Map<string, Card[]>();
     for (const c of cards) {
-      if (c.due <= now) m.set(c.openingId, (m.get(c.openingId) ?? 0) + 1);
+      const arr = m.get(c.openingId);
+      if (arr) arr.push(c);
+      else m.set(c.openingId, [c]);
     }
     return m;
-  }, [cards, now]);
+  }, [cards]);
+
+  const statsByOpening = useMemo(() => {
+    const m = new Map<string, OpeningStats>();
+    for (const o of openings) {
+      m.set(o.id, openingStats(o, cardsByOpening.get(o.id) ?? [], now));
+    }
+    return m;
+  }, [openings, cardsByOpening, now]);
+
+  const totalDue = useMemo(() => {
+    let s = 0;
+    for (const st of statsByOpening.values()) s += st.due;
+    return s;
+  }, [statsByOpening]);
+
+  const dueOpenings = useMemo(
+    () => openings.filter(o => (statsByOpening.get(o.id)?.due ?? 0) > 0),
+    [openings, statsByOpening],
+  );
+
+  // Distinct moves successfully reviewed today, counted from the review log.
+  // The banner's day total is then `done + totalDue`, so it resets naturally
+  // each calendar day with no snapshot to maintain.
+  const done = useMemo(() => reviewsToday(reviews, now), [reviews, now]);
 
   const sortedFolders = useMemo(
     () => [...folders].sort((a, b) => a.name.localeCompare(b.name)),
     [folders],
   );
+
+  const dueByFolder = useMemo(() => {
+    const byId = new Map<string, number>();
+    let none = 0;
+    for (const o of openings) {
+      const d = statsByOpening.get(o.id)?.due ?? 0;
+      if (d === 0) continue;
+      if (!o.folderId) none += d;
+      else byId.set(o.folderId, (byId.get(o.folderId) ?? 0) + d);
+    }
+    return { byId, none };
+  }, [openings, statsByOpening]);
 
   const countByFolder = useMemo(() => {
     const m = new Map<string, number>();
@@ -97,6 +147,14 @@ function Home() {
         </div>
       </div>
 
+      {openings.length > 0 && (
+        <ReviewBanner
+          totalDue={totalDue}
+          done={done}
+          dueOpenings={dueOpenings}
+        />
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
         <FolderSidebar
           folders={sortedFolders}
@@ -104,6 +162,8 @@ function Home() {
           onSelect={setSelectedFolder}
           countsByFolder={countByFolder.byId}
           noneCount={countByFolder.none}
+          dueByFolder={dueByFolder.byId}
+          noneDue={dueByFolder.none}
           draggedOpeningId={draggedOpeningId}
           hoverTarget={hoverTarget}
           onHover={setHoverTarget}
@@ -122,7 +182,7 @@ function Home() {
               <OpeningCard
                 key={o.id}
                 opening={o}
-                due={dueByOpening.get(o.id) ?? 0}
+                stats={statsByOpening.get(o.id) ?? { total: 0, mastered: 0, due: 0 }}
                 isDragged={draggedOpeningId === o.id}
                 onDragStart={() => setDraggedOpeningId(o.id)}
                 onDragEnd={() => {
@@ -140,12 +200,92 @@ function Home() {
   );
 }
 
+function ReviewBanner({
+  totalDue,
+  done,
+  dueOpenings,
+}: {
+  totalDue: number;
+  done: number;
+  dueOpenings: Opening[];
+}) {
+  const displayTotal = done + totalDue;
+  const pct = displayTotal > 0 ? Math.round((done / displayTotal) * 100) : 0;
+
+  if (totalDue === 0) {
+    return (
+      <div className="flex items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 px-6 py-5">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-2xl text-emerald-400">
+          ✓
+        </span>
+        <div>
+          <p className="text-lg font-semibold">Tout est à jour</p>
+          <p className="text-sm text-zinc-400">
+            {done > 0
+              ? `${done} position${done > 1 ? 's' : ''} révisée${done > 1 ? 's' : ''} aujourd'hui.`
+              : "Rien à réviser pour aujourd'hui."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const names = dueOpenings.map(o => o.name);
+  const namesLabel =
+    names.length <= 3
+      ? names.join(', ')
+      : `${names.slice(0, 3).join(', ')} +${names.length - 3}`;
+
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 px-6 py-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <span className="text-5xl font-bold tabular-nums leading-none text-emerald-400">
+            {totalDue}
+          </span>
+          <div>
+            <p className="text-lg font-semibold leading-tight">
+              position{totalDue > 1 ? 's' : ''} à réviser aujourd'hui
+            </p>
+            <p className="mt-0.5 text-sm text-zinc-400">
+              réparti{totalDue > 1 ? 'es' : 'e'} sur {dueOpenings.length} ouverture
+              {dueOpenings.length > 1 ? 's' : ''}
+              {namesLabel && ` · ${namesLabel}`}
+            </p>
+          </div>
+        </div>
+        <Link
+          to="/openings/$openingId/study"
+          params={{ openingId: dueOpenings[0].id }}
+          className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500"
+        >
+          Démarrer la révision
+        </Link>
+      </div>
+      <div className="mt-4 flex items-center gap-3">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-800">
+          <div
+            className="h-full rounded-full bg-emerald-500 transition-all"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <span className="shrink-0 text-xs text-zinc-500 tabular-nums">
+          {done} faite{done > 1 ? 's' : ''} · {totalDue} restante
+          {totalDue > 1 ? 's' : ''}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function FolderSidebar({
   folders,
   selected,
   onSelect,
   countsByFolder,
   noneCount,
+  dueByFolder,
+  noneDue,
   draggedOpeningId,
   hoverTarget,
   onHover,
@@ -156,6 +296,8 @@ function FolderSidebar({
   onSelect: (f: FolderFilter) => void;
   countsByFolder: Map<string, number>;
   noneCount: number;
+  dueByFolder: Map<string, number>;
+  noneDue: number;
   draggedOpeningId: string | undefined;
   hoverTarget: FolderFilter | undefined;
   onHover: (t: FolderFilter | undefined) => void;
@@ -211,6 +353,7 @@ function FolderSidebar({
       <SidebarItem
         label="Sans dossier"
         count={noneCount}
+        due={noneDue}
         active={selected === 'none'}
         droppable
         hovered={hoverTarget === 'none'}
@@ -225,6 +368,7 @@ function FolderSidebar({
           key={f.id}
           label={f.name}
           count={countsByFolder.get(f.id) ?? 0}
+          due={dueByFolder.get(f.id) ?? 0}
           active={selected === f.id}
           droppable
           hovered={hoverTarget === f.id}
@@ -281,6 +425,7 @@ function FolderSidebar({
 function SidebarItem({
   label,
   count,
+  due,
   active,
   droppable,
   hovered,
@@ -299,6 +444,7 @@ function SidebarItem({
 }: {
   label: string;
   count: number;
+  due: number;
   active: boolean;
   droppable?: boolean;
   hovered?: boolean;
@@ -362,7 +508,14 @@ function SidebarItem({
           }`}
         >
           <span className="truncate">{label}</span>
-          <span className="shrink-0 text-xs text-zinc-500">{count}</span>
+          <span className="flex shrink-0 items-center gap-1.5">
+            {due > 0 && (
+              <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-emerald-300">
+                {due}
+              </span>
+            )}
+            <span className="text-xs text-zinc-500">{count}</span>
+          </span>
         </button>
       )}
       {!renaming && (onRenameStart || onDelete) && (
@@ -399,17 +552,19 @@ function SidebarItem({
 
 function OpeningCard({
   opening,
-  due,
+  stats,
   isDragged,
   onDragStart,
   onDragEnd,
 }: {
   opening: Opening;
-  due: number;
+  stats: OpeningStats;
   isDragged: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
+  const masteryPct =
+    stats.total > 0 ? Math.round((stats.mastered / stats.total) * 100) : 0;
   return (
     <li
       draggable
@@ -431,35 +586,62 @@ function OpeningCard({
             {opening.lines.length > 1 ? 's' : ''}
           </p>
         </div>
-        <div className="flex items-center gap-1.5">
-          {due > 0 && (
-            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-300">
-              {due} dû
-            </span>
-          )}
-          <button
-            onClick={() => {
-              if (
-                confirm(
-                  `Supprimer "${opening.name}" ?\n\nLes lignes, annotations et cartes de révision associées seront perdues.`,
-                )
-              ) {
-                openingsRepo.delete(opening.id);
-              }
-            }}
-            title="Supprimer cette ouverture"
-            aria-label="Supprimer cette ouverture"
-            className="rounded p-1 text-base leading-none text-zinc-600 transition hover:bg-red-950/40 hover:text-red-400"
-          >
-            ✕
-          </button>
+        <button
+          onClick={() => {
+            if (
+              confirm(
+                `Supprimer "${opening.name}" ?\n\nLes lignes, annotations et cartes de révision associées seront perdues.`,
+              )
+            ) {
+              openingsRepo.delete(opening.id);
+            }
+          }}
+          title="Supprimer cette ouverture"
+          aria-label="Supprimer cette ouverture"
+          className="rounded p-1 text-base leading-none text-zinc-600 transition hover:bg-red-950/40 hover:text-red-400"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="mt-5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-medium uppercase tracking-wider text-zinc-500">
+            Maîtrise
+          </span>
+          <span className="font-semibold tabular-nums text-emerald-400">
+            {masteryPct}%
+          </span>
+        </div>
+        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+          <div
+            className="h-full rounded-full bg-emerald-500"
+            style={{ width: `${masteryPct}%` }}
+          />
         </div>
       </div>
-      <div className="mt-6 flex items-center gap-2">
+
+      <div className="mt-3 h-6">
+        {stats.due > 0 ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            {stats.due} à réviser
+          </span>
+        ) : (
+          stats.total > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800/70 px-2.5 py-1 text-xs font-medium text-zinc-400">
+              <span className="text-emerald-400">✓</span>
+              Révisé
+            </span>
+          )
+        )}
+      </div>
+
+      <div className="mt-4 flex items-center gap-2">
         <Link
           to="/openings/$openingId/study"
           params={{ openingId: opening.id }}
-          className="flex-1 rounded-lg bg-zinc-800 px-3 py-2 text-center text-sm font-medium transition hover:bg-zinc-700"
+          className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-emerald-500"
         >
           Réviser
         </Link>

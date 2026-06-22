@@ -1,4 +1,4 @@
-import type { Card, Folder, Opening } from '../domain/types';
+import type { Card, Folder, Opening, ReviewEvent } from '../domain/types';
 
 /**
  * Bring an opening up to the current shape. Openings stored before the
@@ -29,10 +29,17 @@ function migrateOpening(o: Opening): Opening {
 const KEY_OPENINGS = 'gambit.openings';
 const KEY_CARDS = 'gambit.cards';
 const KEY_FOLDERS = 'gambit.folders';
+const KEY_REVIEWS = 'gambit.reviews';
+
+/** Keep review history bounded: events older than a year are dropped on write.
+ * Enough for "done today", the login streak, and a year-long heatmap, while
+ * keeping the parsed array (and localStorage footprint) from growing forever. */
+const REVIEW_RETENTION_MS = 365 * 86_400_000;
 
 let cachedOpenings: Opening[] | null = null;
 let cachedCards: Card[] | null = null;
 let cachedFolders: Folder[] | null = null;
+let cachedReviews: ReviewEvent[] | null = null;
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -48,6 +55,7 @@ function invalidate() {
   cachedOpenings = null;
   cachedCards = null;
   cachedFolders = null;
+  cachedReviews = null;
   listeners.forEach(l => l());
 }
 
@@ -75,6 +83,11 @@ function readCards(): Card[] {
 function readFolders(): Folder[] {
   if (cachedFolders === null) cachedFolders = read<Folder[]>(KEY_FOLDERS, []);
   return cachedFolders;
+}
+
+function readReviews(): ReviewEvent[] {
+  if (cachedReviews === null) cachedReviews = read<ReviewEvent[]>(KEY_REVIEWS, []);
+  return cachedReviews;
 }
 
 export const openingsRepo = {
@@ -115,6 +128,19 @@ export const cardsRepo = {
     const remaining = all.filter(c => !predicate(c));
     if (remaining.length === all.length) return;
     localStorage.setItem(KEY_CARDS, JSON.stringify(remaining));
+    invalidate();
+  },
+};
+
+export const reviewsRepo = {
+  list: readReviews,
+  /** Log one review action. Prunes events older than the retention window in
+   * the same write (cutoff is relative to the event being appended). */
+  append: (event: ReviewEvent): void => {
+    const cutoff = event.ts - REVIEW_RETENTION_MS;
+    const kept = readReviews().filter(r => r.ts >= cutoff);
+    kept.push(event);
+    localStorage.setItem(KEY_REVIEWS, JSON.stringify(kept));
     invalidate();
   },
 };

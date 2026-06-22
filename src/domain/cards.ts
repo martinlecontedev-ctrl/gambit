@@ -1,0 +1,184 @@
+import type { Chess } from 'chessops/chess';
+import {
+  applyUci,
+  chessFromFen,
+  fenOf,
+  positionKey,
+  START_FEN,
+  turnColor,
+} from './chess';
+import { newCardStats } from './srs';
+import { buildPrefixTrie, type TrieNode } from './tree';
+import type { Card, CardStats, Opening } from './types';
+
+/** Interval (days) at which a card is considered "mastered" — the classic
+ * SM-2 mature-card threshold. A move stops counting as in-progress once it
+ * survives ~3 weeks of recall. */
+export const MASTERY_INTERVAL_DAYS = 21;
+
+export function cardIdFor(
+  openingId: string,
+  chapterId: string,
+  fen: string,
+  expectedUci: string,
+): string {
+  // Chapter is part of the key so two chapters that diverge on one of the
+  // user's own moves stay as separate SRS entries — required to learn
+  // alternative repertoire choices without contradictions during review.
+  return `${openingId}::${chapterId}::${positionKey(fen)}::${expectedUci}`;
+}
+
+/**
+ * Build the card set for an opening — one card per
+ * `(chapter, position, expected user move)`. Cards walk the prefix trie of
+ * each chapter's lines independently, so the same position appearing in two
+ * chapters with different expected user moves produces two distinct cards.
+ * Positions never reviewed yet come back as fresh `newCardStats()` cards, so
+ * the returned length is the opening's full move count — the right
+ * denominator for mastery/progress.
+ *
+ * `now` stamps the `due` of never-seen positions. Pass the SAME clock used to
+ * test "is it due", otherwise a fresh card minted a millisecond after that
+ * clock reads as not-yet-due and flickers in and out of the due count.
+ */
+export function buildCards(
+  opening: Opening,
+  stored: Card[],
+  now: number = Date.now(),
+): Card[] {
+  const fallbackChapterId = opening.chapters[0]?.id;
+  if (!fallbackChapterId) return [];
+
+  // Re-key every stored card to the current `${opening}::${chapter}::${posKey}::${uci}`
+  // shape: legacy `lineId/plyIdx` cards locate their chapter via the line they
+  // came from; pre-chapter current-shape cards land in the migrated default
+  // chapter (which the openings repo guarantees exists before this runs).
+  const byId = new Map<string, Card>();
+  for (const raw of stored as unknown[]) {
+    if (isLegacyCardShape(raw)) {
+      const migrated = migrateLegacyCard(raw, opening);
+      if (!migrated) continue;
+      const existing = byId.get(migrated.id);
+      if (!existing || migrated.reps > existing.reps) byId.set(migrated.id, migrated);
+    } else if (isCurrentCardShape(raw)) {
+      const chapterId =
+        typeof raw.chapterId === 'string' && raw.chapterId.length > 0
+          ? raw.chapterId
+          : fallbackChapterId;
+      const newId = cardIdFor(raw.openingId, chapterId, raw.fen, raw.expectedUci);
+      const updated: Card =
+        newId !== raw.id || raw.chapterId !== chapterId
+          ? { ...raw, id: newId, chapterId }
+          : raw;
+      const existing = byId.get(newId);
+      if (!existing || updated.reps > existing.reps) byId.set(newId, updated);
+    }
+  }
+
+  const out: Card[] = [];
+
+  for (const chapter of opening.chapters) {
+    const chapterLines = opening.lines.filter(l => l.chapterId === chapter.id);
+    if (chapterLines.length === 0) continue;
+    const trie = buildPrefixTrie(chapterLines);
+    const seen = new Set<string>();
+    const startFen = chapter.startFen ?? START_FEN;
+    const startChess = chessFromFen(startFen);
+    // The user-turn parity depends on whose move it is at the chapter's
+    // starting position — a chapter that starts with black to move flips
+    // every depth-vs-side relationship.
+    const userTurnParity = turnColor(startChess) === opening.color ? 0 : 1;
+
+    const walk = (node: TrieNode, depth: number, chess: Chess) => {
+      if (depth % 2 === userTurnParity) {
+        const fen = fenOf(chess);
+        for (const uci of node.children.keys()) {
+          const id = cardIdFor(opening.id, chapter.id, fen, uci);
+          if (seen.has(id)) continue;
+          seen.add(id);
+          out.push(
+            byId.get(id) ?? {
+              ...newCardStats(now),
+              id,
+              openingId: opening.id,
+              chapterId: chapter.id,
+              fen,
+              expectedUci: uci,
+            },
+          );
+        }
+      }
+      for (const [uci, child] of node.children) {
+        walk(child, depth + 1, applyUci(chess, uci));
+      }
+    };
+
+    walk(trie, 0, startChess);
+  }
+
+  return out;
+}
+
+export type OpeningStats = {
+  /** Every move the user must know in this opening. */
+  total: number;
+  /** Moves whose interval cleared `MASTERY_INTERVAL_DAYS`. */
+  mastered: number;
+  /** Moves due for review at `now`. */
+  due: number;
+};
+
+/** Aggregate mastery/due counts for an opening's full card set. */
+export function openingStats(
+  opening: Opening,
+  stored: Card[],
+  now: number,
+): OpeningStats {
+  const cards = buildCards(opening, stored, now);
+  let mastered = 0;
+  let due = 0;
+  for (const c of cards) {
+    if (c.interval >= MASTERY_INTERVAL_DAYS) mastered++;
+    if (c.due <= now) due++;
+  }
+  return { total: cards.length, mastered, due };
+}
+
+type LegacyCardShape = CardStats & {
+  id: string;
+  openingId: string;
+  lineId: string;
+  plyIdx: number;
+};
+
+function isLegacyCardShape(c: unknown): c is LegacyCardShape {
+  return typeof c === 'object' && c !== null && 'lineId' in c && 'plyIdx' in c;
+}
+
+type CurrentCardLike = Card & { chapterId?: string };
+
+function isCurrentCardShape(c: unknown): c is CurrentCardLike {
+  return typeof c === 'object' && c !== null && 'fen' in c && 'expectedUci' in c;
+}
+
+function migrateLegacyCard(c: LegacyCardShape, opening: Opening): Card | undefined {
+  const line = opening.lines.find(l => l.id === c.lineId);
+  if (!line || c.plyIdx >= line.moves.length) return undefined;
+  const chapter = opening.chapters.find(ch => ch.id === line.chapterId);
+  let chess = chessFromFen(chapter?.startFen ?? START_FEN);
+  for (let i = 0; i < c.plyIdx; i++) chess = applyUci(chess, line.moves[i]);
+  const fen = fenOf(chess);
+  const expectedUci = line.moves[c.plyIdx];
+  return {
+    ease: c.ease,
+    interval: c.interval,
+    reps: c.reps,
+    due: c.due,
+    lapses: c.lapses,
+    id: cardIdFor(opening.id, line.chapterId, fen, expectedUci),
+    openingId: c.openingId,
+    chapterId: line.chapterId,
+    fen,
+    expectedUci,
+  };
+}
