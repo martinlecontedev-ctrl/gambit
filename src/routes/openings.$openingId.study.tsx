@@ -261,6 +261,40 @@ function StudySession({
             )}
           </div>
         </div>
+
+        <div className="mx-auto w-full max-w-[560px]">
+          {phase === 'awaiting' && (
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/40 px-5 py-4">
+              <p className="text-sm font-medium text-zinc-200">Jouer le coup attendu</p>
+              <button
+                onClick={() => setPhase('wrong')}
+                className="shrink-0 rounded-lg border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-zinc-600 hover:bg-zinc-800"
+              >
+                Révéler
+              </button>
+            </div>
+          )}
+          {phase === 'correct' && (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
+              <p className="mb-3 text-center text-xs font-medium uppercase tracking-wide text-zinc-400">
+                Évaluez votre rappel
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <GradeButton onClick={() => grade(3)} label="Difficile" tone="amber" />
+                <GradeButton onClick={() => grade(4)} label="Bien" tone="emerald" />
+                <GradeButton onClick={() => grade(5)} label="Facile" tone="sky" />
+              </div>
+            </div>
+          )}
+          {phase === 'wrong' && (
+            <button
+              onClick={() => grade(0)}
+              className="w-full rounded-2xl border border-red-900/50 bg-red-950/40 px-5 py-4 text-sm font-semibold text-red-200 transition hover:bg-red-900/50"
+            >
+              Continuer
+            </button>
+          )}
+        </div>
       </section>
 
       <aside className="space-y-4">
@@ -277,12 +311,9 @@ function StudySession({
             {opening.color === 'white' ? 'Trait aux blancs' : 'Trait aux noirs'}
           </p>
 
-          <div className="mt-5">
-            {phase === 'awaiting' && (
-              <p className="text-sm text-zinc-400">Jouez le coup attendu.</p>
-            )}
-            {phase === 'correct' && (
-              <div>
+          {phase !== 'awaiting' && (
+            <div className="mt-5">
+              {phase === 'correct' && (
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium text-emerald-300">Correct.</p>
                   {annotation?.nag !== undefined && (
@@ -294,52 +325,35 @@ function StudySession({
                     </span>
                   )}
                 </div>
-                {annotation?.comment?.trim() && (
-                  <p className="mt-2 border-l-2 border-zinc-700 pl-3 text-sm italic text-zinc-300">
-                    {annotation.comment}
-                  </p>
-                )}
-                <p className="mt-3 text-xs text-zinc-500">Évaluez votre rappel.</p>
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  <GradeButton onClick={() => grade(3)} label="Difficile" tone="amber" />
-                  <GradeButton onClick={() => grade(4)} label="Bien" tone="emerald" />
-                  <GradeButton onClick={() => grade(5)} label="Facile" tone="sky" />
-                </div>
-              </div>
-            )}
-            {phase === 'wrong' && (
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-red-300">Erreur.</p>
-                  {annotation?.nag !== undefined && (
-                    <span
-                      className={`font-mono text-sm leading-none ${NAG_COLORS[annotation.nag]}`}
-                      title={NAG_LABELS[annotation.nag]}
-                    >
-                      {NAG_SYMBOLS[annotation.nag]}
+              )}
+              {phase === 'wrong' && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-red-300">Erreur.</p>
+                    {annotation?.nag !== undefined && (
+                      <span
+                        className={`font-mono text-sm leading-none ${NAG_COLORS[annotation.nag]}`}
+                        title={NAG_LABELS[annotation.nag]}
+                      >
+                        {NAG_SYMBOLS[annotation.nag]}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-2 text-xs text-zinc-500">
+                    Coup attendu :{' '}
+                    <span className="font-mono text-zinc-200">
+                      {expectedUci ? uciToSanAt(fenOf(chess), expectedUci) : '—'}
                     </span>
-                  )}
-                </div>
-                <p className="mt-2 text-xs text-zinc-500">
-                  Coup attendu :{' '}
-                  <span className="font-mono text-zinc-200">
-                    {expectedUci ? uciToSanAt(fenOf(chess), expectedUci) : '—'}
-                  </span>
-                </p>
-                {annotation?.comment?.trim() && (
-                  <p className="mt-2 border-l-2 border-zinc-700 pl-3 text-sm italic text-zinc-300">
-                    {annotation.comment}
                   </p>
-                )}
-                <button
-                  onClick={() => grade(0)}
-                  className="mt-4 w-full rounded-lg bg-red-950/40 px-3 py-2 text-sm font-medium text-red-200 hover:bg-red-900/60"
-                >
-                  Continuer
-                </button>
-              </div>
-            )}
-          </div>
+                </>
+              )}
+              {annotation?.comment?.trim() && (
+                <p className="mt-2 border-l-2 border-zinc-700 pl-3 text-sm italic text-zinc-300">
+                  {annotation.comment}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 text-xs text-zinc-500">
@@ -368,7 +382,7 @@ function GradeButton({
   return (
     <button
       onClick={onClick}
-      className={`rounded-lg px-3 py-2 text-xs font-medium transition ${tones[tone]}`}
+      className={`rounded-lg px-3 py-3 text-sm font-medium transition ${tones[tone]}`}
     >
       {label}
     </button>
