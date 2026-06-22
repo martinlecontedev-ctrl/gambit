@@ -11,6 +11,34 @@ npm install
 npm run dev
 ```
 
+## Tests
+
+Tests unitaires du domaine avec **Vitest** ([vitest.config.ts](vitest.config.ts),
+env `node`, sans les plugins Vite de l'app). Ils couvrent les zones à régressions
+faciles : normalisation du roque dual-form / position keys / transpositions
+(`chess.ts`), arbre de variantes et `parentForNewVariant` (`tree.ts`), échelle
+et lapses SM-2 (`srs.ts`).
+
+```bash
+npm test          # one-shot (vitest run), exit ≠ 0 si un test casse
+npm run test:watch # mode watch pour le dev
+```
+
+Les tests vivent à côté du code (`src/**/*.test.ts`) et sont auto-découverts.
+Lancer `npm test` avant un commit qui touche `src/domain/`.
+
+### Automatisation (pas encore branchée — pour plus tard)
+
+Aucun déclencheur automatique n'est en place ; `npm test` est manuel. Options
+quand le besoin viendra, par robustesse décroissante :
+
+- **GitHub Actions** : `npm test` à chaque push/PR. Indépendant de la machine.
+  C'est l'option recommandée.
+- **Hook pré-commit** (ex. `husky` ou un `.git/hooks/pre-commit`) : bloque
+  localement un commit qui casse le domaine. Garde-fou instantané.
+- **Hook Claude Code** (`settings.json`) : `npm test` auto en fin de session
+  d'édition.
+
 ## Architecture (rappels)
 
 - Lignes en **arbre** via `parentLineId`. Une variante = un coup divergent
