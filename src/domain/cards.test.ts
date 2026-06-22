@@ -53,6 +53,14 @@ describe('buildCards', () => {
     expect(e4?.interval).toBe(30);
     expect(e4?.reps).toBe(4);
   });
+
+  it('records the opponent move that led to each card position', () => {
+    const cards = buildCards(opening, []);
+    const e4 = cards.find(c => c.expectedUci === 'e2e4');
+    const nf3 = cards.find(c => c.expectedUci === 'g1f3');
+    expect(e4?.lastMove).toBeUndefined(); // start position, nothing precedes
+    expect(nf3?.lastMove).toBe('e7e5'); // black's reply is the last move
+  });
 });
 
 describe('openingStats', () => {

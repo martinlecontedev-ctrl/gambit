@@ -32,33 +32,37 @@ function NewOpening() {
   };
 
   return (
-    <div className="mx-auto max-w-md">
-      <h1 className="text-2xl font-semibold tracking-tight">Nouvelle ouverture</h1>
+    <main className="mx-auto max-w-md px-10 pt-12 pb-20">
+      <h1 className="text-[32px] font-extrabold tracking-[-0.02em]">
+        Nouvelle ouverture
+      </h1>
       <form onSubmit={submit} className="mt-8 space-y-6">
         <div>
-          <label className="block text-sm font-medium text-zinc-300">Nom</label>
+          <label className="block text-sm font-semibold text-ink-soft">Nom</label>
           <input
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="Sicilienne — Najdorf"
             autoFocus
-            className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-100 placeholder-zinc-500 focus:border-zinc-600 focus:outline-none"
+            className="mt-2 w-full rounded-[10px] border border-line-strong bg-field px-3 py-2.5 text-ink placeholder:text-ink-muted focus:border-accent-soft-border focus:outline-none"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-zinc-300">Couleur jouée</label>
-          <div className="mt-2 grid grid-cols-2 gap-2">
+          <label className="block text-sm font-semibold text-ink-soft">
+            Couleur jouée
+          </label>
+          <div className="mt-2 grid grid-cols-2 gap-2.5">
             {(['white', 'black'] as const).map(c => (
               <button
                 key={c}
                 type="button"
                 onClick={() => setColor(c)}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                className={`rounded-[10px] border px-3 py-2.5 text-sm font-semibold transition ${
                   color === c
-                    ? 'border-zinc-100 bg-zinc-100 text-zinc-900'
-                    : 'border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700'
+                    ? 'border-accent bg-accent-soft text-accent-soft-text'
+                    : 'border-line-strong bg-surface text-ink-soft hover:bg-surface-high'
                 }`}
               >
                 {c === 'white' ? 'Blancs' : 'Noirs'}
@@ -67,23 +71,23 @@ function NewOpening() {
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex justify-end gap-2.5 pt-2">
           <button
             type="button"
             onClick={() => navigate({ to: '/' })}
-            className="rounded-lg px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100"
+            className="rounded-btn px-4 py-2.5 text-sm font-semibold text-ink-soft transition hover:text-ink"
           >
             Annuler
           </button>
           <button
             type="submit"
             disabled={!name.trim()}
-            className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="btn-accent rounded-btn px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
           >
             Créer
           </button>
         </div>
       </form>
-    </div>
+    </main>
   );
 }

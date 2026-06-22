@@ -10,12 +10,12 @@ export const NAG_SYMBOLS: Record<Nag, string> = {
 };
 
 export const NAG_COLORS: Record<Nag, string> = {
-  1: 'text-emerald-400',
-  2: 'text-red-400',
-  3: 'text-emerald-300',
-  4: 'text-red-300',
-  5: 'text-sky-400',
-  6: 'text-amber-400',
+  1: 'text-nag-good',
+  2: 'text-nag-mistake',
+  3: 'text-nag-brilliant',
+  4: 'text-nag-blunder',
+  5: 'text-nag-interesting',
+  6: 'text-nag-dubious',
 };
 
 export const NAG_LABELS: Record<Nag, string> = {
@@ -29,12 +29,12 @@ export const NAG_LABELS: Record<Nag, string> = {
 
 /** Tailwind background classes for the on-square badge overlay. */
 export const NAG_BADGE_BG: Record<Nag, string> = {
-  1: 'bg-emerald-400',
-  2: 'bg-red-400',
-  3: 'bg-emerald-300',
-  4: 'bg-red-300',
-  5: 'bg-sky-400',
-  6: 'bg-amber-400',
+  1: 'bg-nag-good',
+  2: 'bg-nag-mistake',
+  3: 'bg-nag-brilliant',
+  4: 'bg-nag-blunder',
+  5: 'bg-nag-interesting',
+  6: 'bg-nag-dubious',
 };
 
 export const NAG_ORDER: Nag[] = [1, 5, 3, 6, 2, 4];

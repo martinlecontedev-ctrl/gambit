@@ -89,14 +89,19 @@ export function buildCards(
     // every depth-vs-side relationship.
     const userTurnParity = turnColor(startChess) === opening.color ? 0 : 1;
 
-    const walk = (node: TrieNode, depth: number, chess: Chess) => {
+    const walk = (
+      node: TrieNode,
+      depth: number,
+      chess: Chess,
+      lastUci: string | undefined,
+    ) => {
       if (depth % 2 === userTurnParity) {
         const fen = fenOf(chess);
         for (const uci of node.children.keys()) {
           const id = cardIdFor(opening.id, chapter.id, fen, uci);
           if (seen.has(id)) continue;
           seen.add(id);
-          out.push(
+          const base =
             byId.get(id) ?? {
               ...newCardStats(now),
               id,
@@ -104,16 +109,19 @@ export function buildCards(
               chapterId: chapter.id,
               fen,
               expectedUci: uci,
-            },
-          );
+            };
+          // `lastUci` is the move that reached this position — the opponent's
+          // last move at a user-turn node. Always recomputed from the line, so
+          // it overrides any stale value merged from storage.
+          out.push({ ...base, lastMove: lastUci });
         }
       }
       for (const [uci, child] of node.children) {
-        walk(child, depth + 1, applyUci(chess, uci));
+        walk(child, depth + 1, applyUci(chess, uci), uci);
       }
     };
 
-    walk(trie, 0, startChess);
+    walk(trie, 0, startChess, undefined);
   }
 
   return out;

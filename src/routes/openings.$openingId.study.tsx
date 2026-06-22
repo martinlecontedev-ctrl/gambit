@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import type { Config } from '@lichess-org/chessground/config';
 import type { Key } from '@lichess-org/chessground/types';
 import { Chessboard } from '../components/Chessboard';
+import { FigurineSan } from '../components/FigurineSan';
 import { NagSquareBadge } from '../components/NagSquareBadge';
 import {
   applyUci,
@@ -56,40 +57,40 @@ function StudyImpl({
 
 function NotFound() {
   return (
-    <div className="text-center text-zinc-400">
+    <main className="mx-auto max-w-md px-10 py-16 text-center text-ink-soft">
       Ouverture introuvable.{' '}
-      <Link to="/" className="text-zinc-100 underline">
+      <Link to="/" className="font-semibold text-accent underline">
         Retour
       </Link>
-    </div>
+    </main>
   );
 }
 
 function NothingDue({ openingId }: { openingId: string }) {
   return (
-    <div className="mx-auto max-w-md py-16 text-center">
-      <p className="text-2xl">Tout est à jour.</p>
-      <p className="mt-2 text-sm text-zinc-500">Rien à réviser pour le moment.</p>
-      <div className="mt-8 flex justify-center gap-2">
+    <main className="mx-auto max-w-md px-10 py-16 text-center">
+      <p className="text-2xl font-bold">Tout est à jour.</p>
+      <p className="mt-2 text-sm text-meta">Rien à réviser pour le moment.</p>
+      <div className="mt-8 flex justify-center gap-2.5">
         <Link
           to="/openings/$openingId/edit"
           params={{ openingId }}
-          className="rounded-lg border border-zinc-800 px-4 py-2 text-sm hover:bg-zinc-900"
+          className="flex h-11 items-center rounded-btn border border-line-strong bg-surface-high px-4.5 text-sm font-semibold text-ink transition hover:bg-field"
         >
           Éditer
         </Link>
         <Link
           to="/"
-          className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
+          className="btn-accent flex h-11 items-center rounded-btn px-5 text-sm font-semibold"
         >
           Retour
         </Link>
       </div>
-    </div>
+    </main>
   );
 }
 
-type Phase = 'awaiting' | 'correct' | 'wrong';
+type Phase = 'awaiting' | 'revealed' | 'correct' | 'wrong';
 
 function StudySession({
   opening,
@@ -131,7 +132,10 @@ function StudySession({
     () => (showAnswer && expectedUci ? applyUci(chess, expectedUci) : chess),
     [chess, showAnswer, expectedUci],
   );
-  const displayLastMove = showAnswer ? expectedUci : undefined;
+  // While choosing: highlight the opponent's last move (the move that reached
+  // this position) so the user can see what was played even if they missed the
+  // animation. After answering: highlight the revealed expected move.
+  const displayLastMove = showAnswer ? expectedUci : card?.lastMove;
 
   /** The annotation lives on the position *after* the expected move, so it
    * comes into view together with the answer reveal. We look it up by the
@@ -201,21 +205,21 @@ function StudySession({
 
   if (finished) {
     return (
-      <div className="mx-auto max-w-md py-16 text-center">
-        <p className="text-2xl">Session terminée.</p>
-        <p className="mt-2 text-sm text-zinc-500">
+      <main className="mx-auto max-w-md px-10 py-16 text-center">
+        <p className="text-2xl font-bold">Session terminée.</p>
+        <p className="mt-2 text-sm text-meta">
           {stats.pass} bonne{stats.pass > 1 ? 's' : ''} ·{' '}
           {stats.fail} erreur{stats.fail > 1 ? 's' : ''}
         </p>
-        <div className="mt-8 flex justify-center gap-2">
+        <div className="mt-8 flex justify-center gap-2.5">
           <Link
             to="/"
-            className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
+            className="btn-accent flex h-11 items-center rounded-btn px-5 text-sm font-semibold"
           >
             Retour
           </Link>
         </div>
-      </div>
+      </main>
     );
   }
 
@@ -237,20 +241,46 @@ function StudySession({
     setPhase('awaiting');
   };
 
+  const sessionPct = queue.length ? Math.round((idx / queue.length) * 100) : 0;
+  const remaining = queue.length - idx;
+  const expectedSan =
+    expectedUci ? uciToSanAt(fenOf(chess), expectedUci) : '—';
+  const comment = annotation?.comment?.trim();
+  const nagGlyph =
+    annotation?.nag !== undefined ? (
+      <span
+        className={`text-base font-bold leading-none ${NAG_COLORS[annotation.nag]}`}
+        title={NAG_LABELS[annotation.nag]}
+      >
+        {NAG_SYMBOLS[annotation.nag]}
+      </span>
+    ) : null;
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <Link to="/" className="text-sm text-zinc-400 hover:text-zinc-100">
-            ← Sortir
-          </Link>
-          <span className="text-sm text-zinc-500">
+    <main className="mx-auto max-w-300 px-10 pt-6 pb-17.5">
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-2 text-[14.5px] font-semibold text-meta transition hover:text-ink"
+        >
+          ← Sortir
+        </Link>
+        <div className="flex w-95 max-w-full items-center gap-3">
+          <div className="h-1.75 flex-1 overflow-hidden rounded-full bg-track">
+            <div
+              className="h-full rounded-full bg-accent transition-all"
+              style={{ width: `${sessionPct}%` }}
+            />
+          </div>
+          <span className="whitespace-nowrap text-[13px] font-semibold text-ink-muted tnum">
             {idx + 1} / {queue.length}
           </span>
         </div>
+      </div>
 
-        <div className="mx-auto w-full max-w-[560px]">
-          <div className="relative">
+      <div className="grid items-start gap-11 lg:grid-cols-[1fr_380px]">
+        <section className="mx-auto flex w-full max-w-140 flex-col items-center gap-4">
+          <div className="relative w-full">
             <Chessboard config={config} />
             {showAnswer && annotation?.nag !== undefined && expectedUci && (
               <NagSquareBadge
@@ -260,108 +290,142 @@ function StudySession({
               />
             )}
           </div>
-        </div>
 
-        <div className="mx-auto w-full max-w-[560px]">
-          {phase === 'awaiting' && (
-            <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/40 px-5 py-4">
-              <p className="text-sm font-medium text-zinc-200">Jouer le coup attendu</p>
-              <button
-                onClick={() => setPhase('wrong')}
-                className="shrink-0 rounded-lg border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-zinc-600 hover:bg-zinc-800"
-              >
-                Révéler
-              </button>
+          <div className="w-full rounded-[14px] border border-line bg-surface px-5 py-4.5 shadow-card">
+            {phase === 'awaiting' && (
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-base font-bold text-ink">Jouez le coup attendu</p>
+                <button
+                  onClick={() => setPhase('revealed')}
+                  className="h-10.5 shrink-0 rounded-[10px] border border-line-strong bg-surface-high px-4.5 text-sm font-semibold text-ink transition hover:bg-field"
+                >
+                  Révéler
+                </button>
+              </div>
+            )}
+            {phase === 'correct' && (
+              <>
+                <div className="mb-3.5 flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2 text-[17px] font-bold text-success">
+                    Correct.
+                    {nagGlyph}
+                  </span>
+                  <span className="text-[13.5px] text-meta">Évaluez votre rappel</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2.5">
+                  <GradeButton onClick={() => grade(3)} label="Difficile" tone="warning" />
+                  <GradeButton onClick={() => grade(4)} label="Bien" tone="success" />
+                  <GradeButton onClick={() => grade(5)} label="Facile" tone="info" />
+                </div>
+                {comment && (
+                  <p className="mt-3.5 border-l-2 border-line pl-3 text-sm italic text-ink-soft">
+                    {comment}
+                  </p>
+                )}
+              </>
+            )}
+            {phase === 'revealed' && (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-[17px] font-bold text-warning-text">Révélé.</span>
+                  {nagGlyph}
+                </div>
+                <p className="mt-2 text-[13px] text-meta">
+                  Coup attendu :{' '}
+                  <span className="font-semibold text-ink tnum">
+                    <FigurineSan san={expectedSan} />
+                  </span>
+                </p>
+                {comment && (
+                  <p className="mt-2 border-l-2 border-line pl-3 text-sm italic text-ink-soft">
+                    {comment}
+                  </p>
+                )}
+                <button
+                  onClick={() => grade(0)}
+                  className="mt-3.5 w-full rounded-[10px] border border-warning-border bg-warning-soft py-3 text-sm font-semibold text-warning-text transition hover:brightness-[0.98]"
+                >
+                  Continuer
+                </button>
+              </>
+            )}
+            {phase === 'wrong' && (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-[17px] font-bold text-danger">Erreur.</span>
+                  {nagGlyph}
+                </div>
+                <p className="mt-2 text-[13px] text-meta">
+                  Coup attendu :{' '}
+                  <span className="font-semibold text-ink tnum">
+                    <FigurineSan san={expectedSan} />
+                  </span>
+                </p>
+                {comment && (
+                  <p className="mt-2 border-l-2 border-line pl-3 text-sm italic text-ink-soft">
+                    {comment}
+                  </p>
+                )}
+                <button
+                  onClick={() => grade(0)}
+                  className="mt-3.5 w-full rounded-[10px] border border-danger-border bg-danger-soft py-3 text-sm font-semibold text-danger-text transition hover:brightness-[0.98]"
+                >
+                  Continuer
+                </button>
+              </>
+            )}
+          </div>
+        </section>
+
+        <aside className="flex w-full flex-col gap-4">
+          <div className="rounded-card border border-line bg-surface p-5.5 shadow-card">
+            <div className="text-[21px] font-extrabold tracking-[-0.01em]">
+              {opening.name}
             </div>
-          )}
-          {phase === 'correct' && (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
-              <p className="mb-3 text-center text-xs font-medium uppercase tracking-wide text-zinc-400">
-                Évaluez votre rappel
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                <GradeButton onClick={() => grade(3)} label="Difficile" tone="amber" />
-                <GradeButton onClick={() => grade(4)} label="Bien" tone="emerald" />
-                <GradeButton onClick={() => grade(5)} label="Facile" tone="sky" />
+            <div className="mt-1 text-sm text-meta">
+              {opening.color === 'white' ? 'Trait aux blancs' : 'Trait aux noirs'}
+            </div>
+            {currentChapterName && (
+              <div className="mt-4 border-t border-line pt-4">
+                <span
+                  className="inline-flex max-w-full items-center gap-1.75 rounded-full border border-accent-soft-border bg-accent-soft px-2.75 py-1.25 text-[12.5px] font-semibold text-accent-soft-text"
+                  title={currentChapterName}
+                >
+                  <span className="h-1.75 w-1.75 shrink-0 rounded-full bg-accent-dot" />
+                  <span className="truncate">{currentChapterName}</span>
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-card border border-line bg-surface px-5 py-4.5 shadow-card">
+            <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
+              Cette session
+            </div>
+            <div className="flex gap-5.5">
+              <div>
+                <div className="text-[26px] font-extrabold leading-none text-success">
+                  {stats.pass}
+                </div>
+                <div className="mt-1 text-[12.5px] text-meta">bonnes</div>
+              </div>
+              <div>
+                <div className="text-[26px] font-extrabold leading-none text-danger">
+                  {stats.fail}
+                </div>
+                <div className="mt-1 text-[12.5px] text-meta">erreurs</div>
+              </div>
+              <div>
+                <div className="text-[26px] font-extrabold leading-none text-accent">
+                  {remaining}
+                </div>
+                <div className="mt-1 text-[12.5px] text-meta">restantes</div>
               </div>
             </div>
-          )}
-          {phase === 'wrong' && (
-            <button
-              onClick={() => grade(0)}
-              className="w-full rounded-2xl border border-red-900/50 bg-red-950/40 px-5 py-4 text-sm font-semibold text-red-200 transition hover:bg-red-900/50"
-            >
-              Continuer
-            </button>
-          )}
-        </div>
-      </section>
-
-      <aside className="space-y-4">
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
-          <h2 className="text-sm font-semibold tracking-wide text-zinc-300">
-            {opening.name}
-          </h2>
-          {currentChapterName && (
-            <p className="mt-1 truncate text-xs text-zinc-300" title={currentChapterName}>
-              {currentChapterName}
-            </p>
-          )}
-          <p className="mt-1 text-xs text-zinc-500">
-            {opening.color === 'white' ? 'Trait aux blancs' : 'Trait aux noirs'}
-          </p>
-
-          {phase !== 'awaiting' && (
-            <div className="mt-5">
-              {phase === 'correct' && (
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-emerald-300">Correct.</p>
-                  {annotation?.nag !== undefined && (
-                    <span
-                      className={`font-mono text-sm leading-none ${NAG_COLORS[annotation.nag]}`}
-                      title={NAG_LABELS[annotation.nag]}
-                    >
-                      {NAG_SYMBOLS[annotation.nag]}
-                    </span>
-                  )}
-                </div>
-              )}
-              {phase === 'wrong' && (
-                <>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-red-300">Erreur.</p>
-                    {annotation?.nag !== undefined && (
-                      <span
-                        className={`font-mono text-sm leading-none ${NAG_COLORS[annotation.nag]}`}
-                        title={NAG_LABELS[annotation.nag]}
-                      >
-                        {NAG_SYMBOLS[annotation.nag]}
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-2 text-xs text-zinc-500">
-                    Coup attendu :{' '}
-                    <span className="font-mono text-zinc-200">
-                      {expectedUci ? uciToSanAt(fenOf(chess), expectedUci) : '—'}
-                    </span>
-                  </p>
-                </>
-              )}
-              {annotation?.comment?.trim() && (
-                <p className="mt-2 border-l-2 border-zinc-700 pl-3 text-sm italic text-zinc-300">
-                  {annotation.comment}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 text-xs text-zinc-500">
-          <span className="font-medium text-zinc-300">{stats.pass}</span> bonnes ·{' '}
-          <span className="font-medium text-zinc-300">{stats.fail}</span> erreurs
-        </div>
-      </aside>
-    </div>
+          </div>
+        </aside>
+      </div>
+    </main>
   );
 }
 
@@ -372,17 +436,17 @@ function GradeButton({
 }: {
   onClick: () => void;
   label: string;
-  tone: 'amber' | 'emerald' | 'sky';
+  tone: 'warning' | 'success' | 'info';
 }) {
   const tones = {
-    amber: 'bg-amber-950/40 text-amber-200 hover:bg-amber-900/60',
-    emerald: 'bg-emerald-950/40 text-emerald-200 hover:bg-emerald-900/60',
-    sky: 'bg-sky-950/40 text-sky-200 hover:bg-sky-900/60',
+    warning: 'border-warning-border bg-warning-soft text-warning-text',
+    success: 'border-success-border bg-success-soft text-success',
+    info: 'border-info-border bg-info-soft text-info',
   } as const;
   return (
     <button
       onClick={onClick}
-      className={`rounded-lg px-3 py-3 text-sm font-medium transition ${tones[tone]}`}
+      className={`h-12 rounded-btn border text-[14.5px] font-bold transition hover:brightness-[0.97] ${tones[tone]}`}
     >
       {label}
     </button>

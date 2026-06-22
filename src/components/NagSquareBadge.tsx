@@ -38,7 +38,7 @@ export function NagSquareBadge({
       }}
     >
       <span
-        className={`absolute right-1 top-1 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded px-1 font-mono text-[11px] font-bold leading-none text-zinc-900 shadow-md ${NAG_BADGE_BG[nag]}`}
+        className={`absolute right-1 top-1 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded px-1 text-[11px] font-bold leading-none text-surface-high shadow-md ${NAG_BADGE_BG[nag]}`}
         title={NAG_LABELS[nag]}
       >
         {NAG_SYMBOLS[nag]}

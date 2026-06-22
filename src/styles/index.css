@@ -4,6 +4,125 @@
 @import "@lichess-org/chessground/assets/chessground.brown.css";
 @import "@lichess-org/chessground/assets/chessground.cburnett.css";
 
+/* ── Design tokens (Tailwind v4 @theme) ─────────────────────────────────────
+   Light "paper" neutral system. The accent is var-driven (see :root below) so
+   it can be switched per-theme with data-accent on <html>. Board colors are
+   NOT used to restyle the board (chessground keeps its brown theme) — the wood
+   frame token is the only board value the UI consumes. */
+@theme {
+  --color-paper: #f7f8f2; /* page background (flat, no gradient) */
+  --color-surface: #fbfcf7; /* cards, panels */
+  --color-surface-high: #ffffff; /* hover / raised */
+  --color-field: #fbfcf6; /* inputs */
+  --color-line: #e6e8dc; /* default borders */
+  --color-line-strong: #d6dacb; /* button borders, focus */
+  --color-ink: #1e2422; /* primary text */
+  --color-ink-soft: #5e5e63; /* secondary text */
+  --color-ink-muted: #929685; /* labels / meta */
+  --color-meta: #7c7a70; /* sub-meta */
+  --color-track: #e8eade; /* progress / scrubber tracks */
+
+  /* Active accent — resolves to the :root vars, switchable via data-accent. */
+  --color-accent: var(--accent);
+  --color-accent-on: var(--accent-on);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-border: var(--accent-soft-border);
+  --color-accent-soft-text: var(--accent-soft-text);
+  --color-accent-dot: var(--accent-dot);
+
+  /* Fixed semantic (never swaps with accent). */
+  --color-success: #3e7d54;
+  --color-success-soft: #e6f0e4;
+  --color-success-border: #cfe0ce;
+  --color-info: #4f6e8f;
+  --color-info-soft: #e4ecf3;
+  --color-info-border: #cfdce7;
+  --color-warning: #b5852f;
+  --color-warning-soft: #f6ecd3;
+  --color-warning-border: #e6d2a8;
+  --color-warning-text: #9a6f22;
+  --color-danger: #b0493a;
+  --color-danger-soft: #f6e9e4;
+  --color-danger-border: #e6ccc4;
+  --color-danger-text: #a8483a;
+
+  /* Chessboard wood frame (the only board token the UI uses). */
+  --color-board-frame: #c9b488;
+
+  /* NAG move-quality glyphs. */
+  --color-nag-good: #3e7d54;
+  --color-nag-interesting: #4f6e8f;
+  --color-nag-brilliant: #c79a3a;
+  --color-nag-dubious: #b5852f;
+  --color-nag-mistake: #b0493a;
+  --color-nag-blunder: #8e3a2e;
+
+  --font-sans: "Hanken Grotesk", system-ui, sans-serif;
+
+  --radius-input: 8px;
+  --radius-btn: 11px;
+  --radius-card: 16px;
+
+  --shadow-resting: 0 1px 2px rgba(60, 58, 45, 0.06);
+  --shadow-card: 0 1px 2px rgba(60, 58, 45, 0.05), 0 10px 24px -16px rgba(55, 55, 60, 0.22);
+  --shadow-board: 0 2px 4px rgba(80, 60, 30, 0.1), 0 18px 34px -20px rgba(60, 55, 40, 0.45);
+}
+
+/* ── Accent palettes (runtime-switchable) ───────────────────────────────────
+   Default = Bleu ardoise. Switch: document.documentElement.dataset.accent =
+   'emeraude' | 'orange' | 'violet' | 'magenta'. Remove the attribute for blue.
+   --accent-grad / --accent-glow feed the .btn-accent component only. */
+:root {
+  --accent: #2a66b8;
+  --accent-grad: linear-gradient(180deg, #3373c6, #235ca8);
+  --accent-on: #eef3fb;
+  --accent-soft: #e0eaf6;
+  --accent-soft-border: #c3d6ee;
+  --accent-soft-text: #244f8c;
+  --accent-dot: #3373c6;
+  --accent-glow: rgba(42, 102, 184, 0.28);
+}
+[data-accent="emeraude"] {
+  --accent: #0f8a61;
+  --accent-grad: linear-gradient(180deg, #149472, #0c7b57);
+  --accent-on: #ecf8f2;
+  --accent-soft: #dcf1e8;
+  --accent-soft-border: #bfe4d5;
+  --accent-soft-text: #0a6b4d;
+  --accent-dot: #149472;
+  --accent-glow: rgba(15, 138, 97, 0.28);
+}
+[data-accent="orange"] {
+  --accent: #c26a22;
+  --accent-grad: linear-gradient(180deg, #d0762b, #b05e1b);
+  --accent-on: #fcf3ea;
+  --accent-soft: #f6e7d6;
+  --accent-soft-border: #ecd2b4;
+  --accent-soft-text: #9c5418;
+  --accent-dot: #d0762b;
+  --accent-glow: rgba(194, 106, 34, 0.28);
+}
+[data-accent="violet"] {
+  --accent: #6a45c0;
+  --accent-grad: linear-gradient(180deg, #7752ce, #5c39ae);
+  --accent-on: #f2eefb;
+  --accent-soft: #e9e2f6;
+  --accent-soft-border: #d5c8ee;
+  --accent-soft-text: #553597;
+  --accent-dot: #7752ce;
+  --accent-glow: rgba(106, 69, 192, 0.28);
+}
+[data-accent="magenta"] {
+  --accent: #a83e73;
+  --accent-grad: linear-gradient(180deg, #b54b80, #963063);
+  --accent-on: #fbeef4;
+  --accent-soft: #f4e2ec;
+  --accent-soft-border: #e8c7d9;
+  --accent-soft-text: #8a2f5c;
+  --accent-dot: #b54b80;
+  --accent-glow: rgba(168, 62, 115, 0.28);
+}
+
 html,
 body,
 #root {
@@ -11,7 +130,47 @@ body,
 }
 
 body {
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  background-color: #09090b;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tailwind v4 no longer defaults buttons to the pointer cursor (v3 did).
+   Restore it for every enabled button so clickable controls feel clickable. */
+button:not(:disabled),
+[role="button"]:not(:disabled) {
+  cursor: pointer;
+}
+
+/* Tabular figures for numeric UI (scoresheet, counters, stats). */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Slim, paper-toned scrollbar for the editor scoresheet. */
+.scoresheet-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.scoresheet-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 999px;
+}
+.scoresheet-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Primary accent button — accent gradient + colored glow. A component class
+   because Tailwind can't express the gradient token cleanly. Hover brightness
+   is hue-independent so it works for every accent. */
+.btn-accent {
+  background: var(--accent-grad);
+  color: var(--accent-on);
+  border: 1px solid transparent;
+  box-shadow: 0 2px 6px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+}
+.btn-accent:hover {
+  filter: brightness(0.96);
 }

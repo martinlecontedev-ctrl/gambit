@@ -39,7 +39,16 @@ export function Chessboard({ config, onReady, className }: Props) {
   }, [config]);
 
   return (
-    <div className={className ?? 'aspect-square w-full'}>
+    <div
+      className={
+        className ??
+        // Frame via ring (box-shadow), NOT border: a 1px border would shrink
+        // the content box to 526px, making each 12.5% square 65.75px and
+        // leaving a 2-3px sub-pixel gap at the bottom/right. A ring keeps the
+        // board at a clean multiple of 8.
+        'aspect-square w-full overflow-hidden rounded-xl shadow-board ring-1 ring-board-frame'
+      }
+    >
       <div ref={hostRef} className="cg-wrap h-full w-full" />
     </div>
   );

@@ -127,4 +127,8 @@ export type Card = CardStats & {
   fen: string;
   /** UCI of the move the user must play in that position. */
   expectedUci: string;
+  /** UCI of the move that led here — the opponent's last move. Highlighted on
+   * the board during review so the user sees what was just played. Undefined
+   * at a chapter's starting position. Display-only, recomputed on each build. */
+  lastMove?: string;
 };

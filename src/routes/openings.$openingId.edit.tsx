@@ -5,6 +5,7 @@ import type { Config } from '@lichess-org/chessground/config';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import type { Key } from '@lichess-org/chessground/types';
 import { Chessboard } from '../components/Chessboard';
+import { FigurineSan } from '../components/FigurineSan';
 import { Modal } from '../components/Modal';
 import { NagSquareBadge } from '../components/NagSquareBadge';
 import {
@@ -67,12 +68,12 @@ function EditOpening() {
 
 function NotFound() {
   return (
-    <div className="text-center text-zinc-400">
+    <main className="mx-auto max-w-md px-10 py-16 text-center text-ink-soft">
       Ouverture introuvable.{' '}
-      <Link to="/" className="text-zinc-100 underline">
+      <Link to="/" className="font-semibold text-accent underline">
         Retour
       </Link>
-    </div>
+    </main>
   );
 }
 
@@ -701,13 +702,34 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
     // next render if we just deleted the current chapter.
   };
 
+  const navTotal = line?.moves.length ?? 0;
+  const navPct = navTotal ? (cursorIdx / navTotal) * 100 : 0;
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[220px_1fr_400px]">
+    <main className="mx-auto max-w-325 px-10 pb-17.5 pt-4">
+      <div className="mb-4 grid grid-cols-[240px_1fr_350px] items-center gap-8">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-2 text-[14.5px] font-semibold text-meta transition hover:text-ink"
+        >
+          ← Retour
+        </Link>
+        <div className="flex items-baseline gap-5">
+          <h1 className="min-w-0 truncate text-[28px] font-extrabold tracking-[-0.02em]">
+            {opening.name}
+          </h1>
+          <p className="shrink-0 whitespace-nowrap text-sm text-meta">
+            {opening.color === 'white' ? 'Blancs' : 'Noirs'} ·{' '}
+            {opening.lines.length} ligne{opening.lines.length > 1 ? 's' : ''}
+          </p>
+        </div>
+      </div>
+      <div className="grid grid-cols-[240px_1fr_350px] items-start gap-8">
       <aside className="flex flex-col gap-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+        <h2 className="mx-1 mb-3.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-ink-muted">
           Chapitres
         </h2>
-        <ul className="flex flex-col gap-1">
+        <ul className="flex flex-col gap-1.5">
           {sortedChapters.map(c => (
             <li key={c.id}>
               <ChapterItem
@@ -734,79 +756,59 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
         </ul>
         <button
           onClick={() => setChapterModal({ seedMoves: [], defaultName: '' })}
-          className="mt-1 rounded-md border border-dashed border-zinc-700 px-2 py-1.5 text-xs text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200"
+          className="mt-1 w-full rounded-xl border border-dashed border-line-strong px-3.5 py-3 text-[13.5px] font-semibold text-meta transition hover:border-accent hover:text-accent"
         >
           + Nouveau chapitre
         </button>
       </aside>
       <section className="space-y-4">
-        <header>
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <Link to="/" className="text-sm text-zinc-400 hover:text-zinc-100">
-                ← Retour
-              </Link>
-              <h1 className="mt-2 truncate text-2xl font-semibold tracking-tight">
-                {opening.name}
-              </h1>
-              <p className="text-sm text-zinc-500">
-                {opening.color === 'white' ? 'Blancs' : 'Noirs'} ·{' '}
-                {opening.lines.length} ligne{opening.lines.length > 1 ? 's' : ''}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-            <EngineToggle
-              enabled={engineEnabled}
-              isThinking={isThinking}
-              evalText={evalText}
-              onToggle={toggleEngine}
-            />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <EngineToggle
+            enabled={engineEnabled}
+            isThinking={isThinking}
+            evalText={evalText}
+            onToggle={toggleEngine}
+          />
+          <div className="flex gap-2.5">
             <button
               onClick={removeOpening}
-              className="rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-400 hover:border-red-900 hover:text-red-300"
+              className="h-10 rounded-[10px] border border-danger-border bg-danger-soft px-3.75 text-[13.5px] font-semibold text-danger-text transition hover:brightness-[0.98]"
             >
               Supprimer
             </button>
             <button
               onClick={() => setExportOpen(true)}
-              className="rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:text-zinc-100"
+              className="h-10 rounded-[10px] border border-line-strong bg-surface px-3.75 text-[13.5px] font-semibold text-ink transition hover:bg-surface-high"
             >
               Exporter
             </button>
             <Link
               to="/openings/$openingId/study"
               params={{ openingId: opening.id }}
-              className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
+              className="btn-accent flex h-10 items-center rounded-[10px] px-3.75 text-[13.5px] font-semibold"
             >
               Réviser
             </Link>
           </div>
-          </div>
-          {/* Chip row: recognized opening name + YouTube search shortcut.
-              The chip is always rendered (`invisible` fallback) so its
-              appearance never shifts the board. The button sits in the same
-              flex container — `min-w-0 flex-1` on the chip lets `truncate`
-              clip long ECO names instead of forcing horizontal overflow. */}
-          <div className="mt-1 flex items-center gap-2">
+        </div>
+        {/* ECO + recognized name. Always rendered (`invisible` fallback) so
+            its appearance never shifts the board below. */}
+        <div className="flex items-center gap-2.5">
             <p
-              className={`min-w-0 flex-1 truncate text-xs text-zinc-500 ${
+              className={`min-w-0 flex-1 truncate text-[13.5px] text-meta ${
                 recognizedOpening ? '' : 'invisible'
               }`}
               aria-hidden={recognizedOpening ? undefined : true}
             >
-              <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300">
+              <span className="mr-2 rounded-md border border-line-strong bg-track px-2 py-0.75 text-[11px] font-bold tracking-[0.06em] text-ink-soft">
                 {recognizedOpening?.eco ?? 'A00'}
-              </span>{' '}
+              </span>
               <span className="italic">{recognizedOpening?.name ?? ' '}</span>
             </p>
-            <YoutubeSearchButton
-              opening={recognizedOpening}
-              color={opening.color}
-            />
+            <YoutubeSearchButton opening={recognizedOpening} color={opening.color} />
           </div>
-        </header>
 
-        <div className="mx-auto w-full max-w-[560px] space-y-3">
+        <div className="w-132 max-w-full space-y-3">
           <div className="relative">
             {engineEnabled && (
               <EvalBar
@@ -827,25 +829,77 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
                 />
               )}
           </div>
-          <AnnotationPanel
-            fen={currentFen}
-            annotation={currentAnnotation}
-            onPatch={patch => updateAnnotation(currentFen, patch)}
-          />
+          <div className="rounded-xl border border-line bg-surface px-3.5 py-2.5 shadow-resting">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setCursorIdx(0)}
+                className="whitespace-nowrap text-[13px] font-semibold text-ink-soft transition hover:text-ink"
+              >
+                Début
+              </button>
+              <button
+                onClick={() => setCursorIdx(c => Math.max(0, c - 1))}
+                aria-label="Coup précédent"
+                className="flex h-8 w-9 items-center justify-center rounded-lg border border-line-strong bg-field text-ink-soft transition hover:bg-track"
+              >
+                ←
+              </button>
+              <div className="relative flex-1">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
+                  <div
+                    className="h-full rounded-full bg-accent"
+                    style={{ width: `${navPct}%` }}
+                  />
+                </div>
+                <div
+                  className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-accent bg-field shadow-resting"
+                  style={{ left: `${navPct}%` }}
+                />
+                <input
+                  type="range"
+                  min={0}
+                  max={navTotal}
+                  value={cursorIdx}
+                  onChange={e => setCursorIdx(Number(e.target.value))}
+                  disabled={navTotal === 0}
+                  aria-label="Naviguer dans la ligne"
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-default"
+                />
+              </div>
+              <button
+                onClick={() =>
+                  setCursorIdx(c => (line ? Math.min(line.moves.length, c + 1) : c))
+                }
+                aria-label="Coup suivant"
+                className="flex h-8 w-9 items-center justify-center rounded-lg border border-line-strong bg-field text-ink-soft transition hover:bg-track"
+              >
+                →
+              </button>
+              <button
+                onClick={() => setCursorIdx(c => (line ? line.moves.length : c))}
+                className="whitespace-nowrap text-[13px] font-semibold text-ink-soft transition hover:text-ink"
+              >
+                Fin
+              </button>
+              <span className="whitespace-nowrap pl-1 text-[12.5px] text-ink-muted tnum">
+                {cursorIdx} / {navTotal}
+              </span>
+            </div>
+          </div>
         </div>
       </section>
 
-      <aside className="flex flex-col gap-3">
-        <div className="flex max-h-[640px] flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/40">
-          <div className="flex items-baseline justify-between border-b border-zinc-800 px-4 py-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-              Ligne en cours
-            </h2>
-            <span className="text-[10px] text-zinc-600">
-              (chip) = bascule de variante
-            </span>
+      <aside className="flex flex-col gap-4">
+        <div className="overflow-hidden rounded-[14px] border border-line bg-surface shadow-resting">
+          <div className="px-4 pt-4">
+            <div className="mb-3 flex items-baseline justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
+                Ligne en cours
+              </span>
+              <span className="text-[11px] text-ink-muted">(chip) = bascule</span>
+            </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 py-3">
+          <div className="scoresheet-scroll max-h-75 overflow-y-auto px-4">
             {line && rootLine ? (
               <SelectedLineView
                 line={line}
@@ -862,54 +916,17 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
                 }}
               />
             ) : (
-              <p className="text-xs italic text-zinc-500">
+              <p className="pb-3 text-sm italic text-meta">
                 Ouverture vide. Jouez un coup pour commencer.
               </p>
             )}
           </div>
-        </div>
-
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-3">
-          <div className="flex items-center justify-between gap-2 text-xs">
-            <button
-              onClick={() => setCursorIdx(0)}
-              className="rounded-md px-2 py-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-            >
-              Début
-            </button>
-            <div className="flex gap-1">
-              <button
-                onClick={() => setCursorIdx(c => Math.max(0, c - 1))}
-                className="rounded-md px-2 py-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-                aria-label="Coup précédent"
-              >
-                ←
-              </button>
-              <button
-                onClick={() =>
-                  setCursorIdx(c => (line ? Math.min(line.moves.length, c + 1) : c))
-                }
-                className="rounded-md px-2 py-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-                aria-label="Coup suivant"
-              >
-                →
-              </button>
-            </div>
-            <button
-              onClick={() =>
-                setCursorIdx(c => (line ? line.moves.length : c))
-              }
-              className="rounded-md px-2 py-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-            >
-              Fin
-            </button>
-          </div>
-          <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+          <div className="flex items-center justify-between gap-2.5 border-t border-line bg-field px-4 py-3">
             <button
               onClick={truncateAtCursor}
               disabled={!line || cursorIdx >= line.moves.length}
               title="Supprime tous les coups après la position courante dans la ligne en cours"
-              className="rounded-md px-2 py-1 text-amber-400 hover:bg-amber-950/40 disabled:opacity-30"
+              className="text-[13px] font-semibold text-warning-text transition hover:brightness-90 disabled:opacity-30"
             >
               Supprimer la suite
             </button>
@@ -921,12 +938,18 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
                   ? 'Supprime cette variante (ses enfants sont rattachés à son parent)'
                   : 'La ligne racine ne peut pas être supprimée'
               }
-              className="rounded-md px-2 py-1 text-red-400 hover:bg-red-950/40 disabled:opacity-30"
+              className="text-[13px] font-semibold text-warning-text transition hover:brightness-90 disabled:opacity-30"
             >
               Supprimer la variante
             </button>
           </div>
         </div>
+
+        <AnnotationPanel
+          fen={currentFen}
+          annotation={currentAnnotation}
+          onPatch={patch => updateAnnotation(currentFen, patch)}
+        />
       </aside>
 
       {chapterModal && (
@@ -941,7 +964,8 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
       {exportOpen && (
         <ExportPgnModal onClose={() => setExportOpen(false)} opening={opening} />
       )}
-    </div>
+      </div>
+    </main>
   );
 }
 
@@ -979,8 +1003,8 @@ function ChapterItem({
 }) {
   return (
     <div
-      className={`group relative rounded-md transition ${
-        active ? 'bg-zinc-800' : 'hover:bg-zinc-900'
+      className={`group relative rounded-xl border transition ${
+        active ? 'border-line bg-surface shadow-resting' : 'border-transparent hover:bg-track'
       }`}
     >
       {renaming ? (
@@ -993,28 +1017,31 @@ function ChapterItem({
             if (e.key === 'Enter') onRenameSubmit();
             if (e.key === 'Escape') onRenameCancel();
           }}
-          className="w-full rounded-md bg-transparent px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+          className="w-full rounded-xl bg-transparent px-3.5 py-3 text-sm text-ink focus:outline-none"
         />
       ) : (
         <button
           onClick={onSelect}
           title={chapter.name}
-          className={`block w-full truncate rounded-md px-3 py-2 text-left text-sm transition ${
-            active ? 'text-zinc-100' : 'text-zinc-300 hover:text-zinc-100'
+          className={`flex w-full items-center gap-2.5 rounded-xl px-3.5 py-3 text-left text-sm font-medium transition ${
+            active ? 'text-ink' : 'text-ink-soft hover:text-ink'
           }`}
         >
-          {chapter.name}
+          <span
+            className={`h-4.5 w-0.75 shrink-0 rounded-full ${active ? 'bg-accent' : 'bg-transparent'}`}
+          />
+          <span className="truncate">{chapter.name}</span>
         </button>
       )}
       {!renaming && (
-        <div className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-zinc-700 px-1 py-0.5 opacity-0 shadow-sm ring-1 ring-zinc-600/60 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+        <div className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-line bg-surface-high px-1 py-0.5 opacity-0 shadow-resting transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
           <button
             onClick={e => {
               e.stopPropagation();
               onRenameStart();
             }}
             title="Renommer"
-            className="rounded p-1 text-xs text-zinc-300 transition hover:bg-zinc-600 hover:text-zinc-50"
+            className="rounded p-1 text-xs text-ink-soft transition hover:bg-track hover:text-ink"
           >
             ✎
           </button>
@@ -1025,7 +1052,7 @@ function ChapterItem({
                 onDelete();
               }}
               title="Supprimer le chapitre"
-              className="rounded p-1 text-xs text-zinc-300 transition hover:bg-red-900/60 hover:text-red-200"
+              className="rounded p-1 text-xs text-ink-soft transition hover:bg-danger-soft hover:text-danger"
             >
               ✕
             </button>
@@ -1063,7 +1090,7 @@ function ChapterNameModal({
   return (
     <Modal open onClose={onCancel} title="Nouveau chapitre">
       <form onSubmit={submit} className="space-y-3">
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-meta">
           {forced
             ? 'Tu joues un coup différent sur ta couleur. Donne un nom au chapitre qui va porter cette variante — la révision saura ainsi quelle théorie tu veux driller.'
             : 'Crée un chapitre vide pour ranger une nouvelle ligne.'}
@@ -1075,20 +1102,20 @@ function ChapterNameModal({
           onChange={e => setName(e.target.value)}
           placeholder="Ex. Najdorf — Anglaise"
           autoFocus
-          className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-zinc-600 focus:outline-none"
+          className="w-full rounded-md border border-line bg-field px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent-soft-border focus:outline-none"
         />
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100"
+            className="rounded-lg px-4 py-2 text-sm text-ink-soft hover:text-ink"
           >
             Annuler
           </button>
           <button
             type="submit"
             disabled={!name.trim()}
-            className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="btn-accent rounded-btn px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
           >
             Créer le chapitre
           </button>
@@ -1129,9 +1156,9 @@ function EvalBar({
   }, [result, currentFen, chess]);
 
   return (
-    <div className="absolute -left-5 top-0 h-full w-2.5 overflow-hidden rounded-sm bg-zinc-800 ring-1 ring-zinc-700/40">
+    <div className="absolute -left-5 top-0 h-full w-2.5 overflow-hidden rounded-sm bg-ink ring-1 ring-line-strong">
       <div
-        className="absolute inset-x-0 bottom-0 bg-zinc-100 transition-[height] duration-500 ease-out"
+        className="absolute inset-x-0 bottom-0 bg-surface-high transition-[height] duration-500 ease-out"
         style={{ height: `${whiteShare * 100}%` }}
       />
     </div>
@@ -1152,7 +1179,7 @@ function YoutubeSearchButton({
   color: Color;
 }) {
   const baseClass =
-    'inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition';
+    'inline-flex shrink-0 items-center gap-1.5 rounded-[10px] border border-line-strong bg-surface-high px-3 py-1 text-[13px] font-semibold transition';
   const icon = (
     <svg
       viewBox="0 0 24 24"
@@ -1166,7 +1193,7 @@ function YoutubeSearchButton({
   if (!opening) {
     return (
       <span
-        className={`${baseClass} cursor-not-allowed text-zinc-600`}
+        className={`${baseClass} cursor-not-allowed text-ink-muted`}
         aria-disabled="true"
         title="Pas d'ouverture reconnue"
       >
@@ -1181,7 +1208,7 @@ function YoutubeSearchButton({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className={`${baseClass} text-red-500 hover:bg-zinc-800 hover:text-red-400`}
+      className={`${baseClass} text-danger hover:bg-field`}
       title={`Rechercher "${query}" sur YouTube`}
     >
       {icon} YouTube
@@ -1210,27 +1237,25 @@ function EngineToggle({
           ? 'Stockfish actif — clic pour désactiver'
           : 'Activer Stockfish (analyse + flèches de coups suggérés)'
       }
-      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[13px] font-semibold transition hover:brightness-[0.97] ${
         enabled
-          ? 'border-sky-700/60 bg-sky-950/40 text-sky-200 hover:border-sky-600'
-          : 'border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+          ? 'border-info-border bg-info-soft text-info'
+          : 'border-line-strong bg-surface text-ink-muted hover:bg-surface-high'
       }`}
     >
-      <span className="font-medium">Engine</span>
+      <span>Engine</span>
       <span
-        className={`h-1.5 w-1.5 rounded-full transition ${
+        className={`h-1.75 w-1.75 rounded-full transition ${
           enabled
             ? isThinking
-              ? 'animate-pulse bg-sky-400'
-              : 'bg-sky-400'
-            : 'bg-zinc-600'
+              ? 'animate-pulse bg-success ring-[3px] ring-success/20'
+              : 'bg-success ring-[3px] ring-success/20'
+            : 'bg-line-strong'
         }`}
       />
       {enabled && evalText !== null && (
         <span
-          className={`font-mono text-xs tabular-nums ${
-            positive ? 'text-emerald-300' : 'text-red-300'
-          }`}
+          className={`text-[13px] tnum ${positive ? 'text-success' : 'text-danger'}`}
         >
           {evalText}
         </span>
@@ -1262,7 +1287,7 @@ function ExportPgnModal({
   return (
     <Modal open onClose={onClose} title="Exporter en PGN">
       <div className="space-y-3">
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-meta">
           Compatible Lichess Study, ChessBase, Chessable. Inclut variantes,
           commentaires, NAGs et flèches.
         </p>
@@ -1270,19 +1295,19 @@ function ExportPgnModal({
           readOnly
           value={pgn}
           rows={10}
-          className="w-full resize-none rounded-md border border-zinc-800 bg-zinc-950 p-2 font-mono text-xs text-zinc-100 focus:outline-none"
+          className="w-full resize-none rounded-md border border-line bg-field p-2 font-mono text-xs text-ink focus:outline-none"
           onFocus={e => e.currentTarget.select()}
         />
         <div className="flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100"
+            className="rounded-lg px-4 py-2 text-sm text-ink-soft hover:text-ink"
           >
             Fermer
           </button>
           <button
             onClick={copy}
-            className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
+            className="btn-accent rounded-btn px-4 py-2 text-sm font-semibold"
           >
             {copied ? 'Copié ✓' : 'Copier'}
           </button>
@@ -1341,13 +1366,13 @@ function SelectedLineView({
 
   if (line.moves.length === 0) {
     return (
-      <div className="py-3 font-mono text-sm">
+      <div className="py-3 text-sm">
         <button
           onClick={() => onSetCursor(0)}
-          className={`rounded px-2 py-1 text-xs italic transition ${
+          className={`rounded-md px-2 py-1 text-xs italic transition ${
             cursorIdx === 0
-              ? 'bg-zinc-100 text-zinc-900'
-              : 'text-zinc-500 hover:bg-zinc-800'
+              ? 'border border-line-strong bg-surface-high text-ink shadow-resting'
+              : 'text-meta hover:bg-track'
           }`}
         >
           (position initiale — jouez un coup)
@@ -1380,8 +1405,8 @@ function SelectedLineView({
     rows.push(
       <Fragment key={rowIdx}>
         <div
-          className={`select-none px-3 py-1.5 text-right text-zinc-500 ${
-            isEven ? 'bg-zinc-900/30' : ''
+          className={`select-none px-3 py-1.5 text-right text-ink-muted tnum ${
+            isEven ? 'bg-field' : ''
           }`}
         >
           {fullmove}.
@@ -1403,8 +1428,8 @@ function SelectedLineView({
           />
         ) : (
           <div
-            className={`border-l border-zinc-800/60 px-3 py-1.5 ${
-              isEven ? 'bg-zinc-900/30' : ''
+            className={`border-l border-line px-3 py-1.5 ${
+              isEven ? 'bg-field' : ''
             }`}
           />
         )}
@@ -1427,7 +1452,7 @@ function SelectedLineView({
   }
 
   return (
-    <div className="grid grid-cols-[auto_1fr_1fr] overflow-hidden rounded-md font-mono text-sm">
+    <div className="grid grid-cols-[34px_1fr_1fr] overflow-hidden pb-2 text-sm">
       {rows}
     </div>
   );
@@ -1474,9 +1499,7 @@ function MoveCell({
 
   return (
     <div
-      className={`border-l border-zinc-800/60 px-3 py-1.5 ${
-        shaded ? 'bg-zinc-900/30' : ''
-      }`}
+      className={`border-l border-line px-3 py-1.5 ${shaded ? 'bg-field' : ''}`}
     >
       <div className="flex flex-wrap items-baseline gap-x-2">
         {hasMove && (
@@ -1488,7 +1511,7 @@ function MoveCell({
             />
             {nag !== undefined && (
               <span
-                className={`font-mono text-xs leading-none ${NAG_COLORS[nag]}`}
+                className={`text-xs font-bold leading-none ${NAG_COLORS[nag]}`}
                 title={NAG_LABELS[nag]}
               >
                 {NAG_SYMBOLS[nag]}
@@ -1523,13 +1546,13 @@ function SelectedMove({
   return (
     <button
       onClick={onClick}
-      className={`rounded px-1 font-medium transition ${
+      className={`rounded-md px-1.5 py-0.5 font-semibold transition ${
         isCursor
-          ? 'bg-zinc-100 text-zinc-900'
-          : 'text-zinc-100 hover:bg-zinc-800'
+          ? 'border border-line-strong bg-surface-high text-ink shadow-resting'
+          : 'text-ink hover:bg-track'
       }`}
     >
-      {san}
+      <FigurineSan san={san} />
     </button>
   );
 }
@@ -1566,37 +1589,37 @@ function AnnotationPanel({
   const currentNag = annotation?.nag;
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-          Note pour cette position
-        </span>
-        <div className="flex gap-0.5">
-          {NAG_ORDER.map(n => (
-            <button
-              key={n}
-              onClick={() => toggleNag(n)}
-              title={NAG_LABELS[n]}
-              className={`rounded px-1.5 py-0.5 font-mono text-xs leading-none transition ${
-                currentNag === n
-                  ? `${NAG_COLORS[n]} bg-zinc-800 ring-1 ring-inset ring-zinc-700`
-                  : 'text-zinc-500 hover:text-zinc-200'
-              }`}
-            >
-              {NAG_SYMBOLS[n]}
-            </button>
-          ))}
-        </div>
+    <div className="rounded-[14px] border border-line bg-surface p-4 shadow-resting">
+      <div className="mb-3.5 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
+        Annotation
       </div>
+      <div className="mb-2 text-xs font-semibold text-ink-soft">Qualité du coup</div>
+      <div className="mb-4 flex gap-1.75">
+        {NAG_ORDER.map(n => (
+          <button
+            key={n}
+            onClick={() => toggleNag(n)}
+            title={NAG_LABELS[n]}
+            className={`flex h-8 flex-1 items-center justify-center rounded-lg border text-[15px] font-bold transition ${NAG_COLORS[n]} ${
+              currentNag === n
+                ? 'border-current bg-current/10 ring-2 ring-current/20'
+                : 'border-line bg-field hover:border-current/40 hover:bg-current/5'
+            }`}
+          >
+            {NAG_SYMBOLS[n]}
+          </button>
+        ))}
+      </div>
+      <div className="mb-2 text-xs font-semibold text-ink-soft">Commentaire</div>
       <textarea
         value={draftComment}
         onChange={e => setDraftComment(e.target.value)}
         onBlur={onCommentBlur}
         placeholder="Idée du coup, plan, faiblesse à exploiter…"
-        rows={2}
-        className="mt-2 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 p-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-600 focus:outline-none"
+        rows={3}
+        className="w-full resize-y rounded-[10px] border border-line-strong bg-field p-3 text-sm text-ink placeholder:text-ink-muted focus:outline-none"
       />
-      <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-500">
+      <div className="mt-3 flex items-center justify-between border-t border-line pt-3 text-[12.5px] text-ink-muted">
         <span>
           {arrowsCount > 0
             ? `${arrowsCount} forme${arrowsCount > 1 ? 's' : ''} sur le plateau`
@@ -1605,7 +1628,7 @@ function AnnotationPanel({
         {arrowsCount > 0 && (
           <button
             onClick={clearArrows}
-            className="text-amber-400 hover:text-amber-300"
+            className="font-semibold text-warning-text transition hover:brightness-90"
           >
             Effacer les flèches
           </button>
@@ -1626,9 +1649,9 @@ function AltChip({
     <button
       onClick={onClick}
       title={`Basculer sur la variante ${san}`}
-      className="cursor-pointer italic text-zinc-500 transition hover:text-zinc-200"
+      className="cursor-pointer italic text-ink-muted transition hover:text-ink"
     >
-      ({san})
+      (<FigurineSan san={san} />)
     </button>
   );
 }
