@@ -257,6 +257,7 @@ function ReviewBanner({
         <Link
           to="/openings/$openingId/study"
           params={{ openingId: dueOpenings[0].id }}
+          search={{ program: true }}
           className="btn-accent flex h-11.5 items-center rounded-btn px-5.5 text-[15px] font-semibold"
         >
           Démarrer la révision
@@ -641,6 +642,7 @@ function OpeningCard({
         <Link
           to="/openings/$openingId/study"
           params={{ openingId: opening.id }}
+          search={{ program: false }}
           className="btn-accent flex h-10.5 flex-1 items-center justify-center rounded-[10px] text-sm font-semibold"
         >
           Réviser

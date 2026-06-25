@@ -17,42 +17,164 @@ import {
   uciFromMove,
   uciToSanAt,
 } from '../domain/chess';
-import { buildCards } from '../domain/cards';
+import { buildCards, openingStats } from '../domain/cards';
 import { NAG_COLORS, NAG_LABELS, NAG_SYMBOLS } from '../domain/nag';
 import { review, type Grade } from '../domain/srs';
-import type { Card, Opening } from '../domain/types';
+import type { Card, Chapter, Opening } from '../domain/types';
 import { cardsRepo, openingsRepo, reviewsRepo } from '../storage/repository';
 import { useStored } from '../storage/store';
 
-export const Route = createFileRoute('/openings/$openingId/study')({ component: Study });
+/** One entry of the program's opening queue (review-all mode). */
+type OpeningFileItem = { id: string; name: string; due: number };
+
+type StudySearch = { program: boolean };
+
+export const Route = createFileRoute('/openings/$openingId/study')({
+  component: Study,
+  // `program` = launched from the home banner: review every due opening, not
+  // just this one. Drives the opening queue shown on top.
+  validateSearch: (search: Record<string, unknown>): StudySearch => ({
+    program: search.program === true || search.program === 'true',
+  }),
+});
 
 function Study() {
   const { openingId } = Route.useParams();
+  const { program } = Route.useSearch();
   const opening = useStored(() => openingsRepo.get(openingId));
+  const openings = useStored(() => openingsRepo.list());
   const allCards = useStored(() => cardsRepo.list());
   const storedCards = useMemo(
     () => allCards.filter(c => c.openingId === openingId),
     [allCards, openingId],
   );
-  return <StudyImpl opening={opening} storedCards={storedCards} />;
+
+  // Program mode: the queue of openings still due, in list order, so the user
+  // sees where they are and what's next. The current opening is always kept
+  // (stays highlighted even once it's cleared and sits on its done screen).
+  const programNow = useMemo(() => Date.now(), []);
+  const openingsFile = useMemo<OpeningFileItem[] | undefined>(() => {
+    if (!program) return undefined;
+    return openings
+      .map(o => ({
+        id: o.id,
+        name: o.name,
+        due: openingStats(
+          o,
+          allCards.filter(c => c.openingId === o.id),
+          programNow,
+        ).due,
+      }))
+      .filter(o => o.due > 0 || o.id === openingId);
+  }, [program, openings, allCards, openingId, programNow]);
+
+  const nextOpening = openingsFile?.find(o => o.id !== openingId && o.due > 0);
+
+  // Session score lives here (the route component), so it survives both chapter
+  // switches and program opening-to-opening navigation (TanStack reuses this
+  // component across param changes). It resets only when the study route is
+  // left and re-entered — i.e. a fresh session, program or single opening.
+  const [stats, setStats] = useState({ pass: 0, fail: 0 });
+  const recordGrade = (g: Grade) =>
+    setStats(s => ({
+      pass: s.pass + (g >= 3 ? 1 : 0),
+      fail: s.fail + (g < 3 ? 1 : 0),
+    }));
+
+  return (
+    <StudyImpl
+      key={openingId}
+      opening={opening}
+      storedCards={storedCards}
+      openingsFile={openingsFile}
+      nextOpening={nextOpening}
+      stats={stats}
+      onGraded={recordGrade}
+    />
+  );
 }
 
 function StudyImpl({
   opening,
   storedCards,
+  openingsFile,
+  nextOpening,
+  stats,
+  onGraded,
 }: {
   opening: Opening | undefined;
   storedCards: Card[];
+  openingsFile: OpeningFileItem[] | undefined;
+  nextOpening: OpeningFileItem | undefined;
+  stats: { pass: number; fail: number };
+  onGraded: (g: Grade) => void;
 }) {
-  const dueQueue = useMemo(() => {
-    if (!opening) return [];
-    const now = Date.now();
-    return buildCards(opening, storedCards, now).filter(c => c.due <= now);
-  }, [opening, storedCards]);
+  // Frozen at mount so due status (and the per-chapter counts) stay stable as
+  // cards get rescheduled during the session.
+  const now = useMemo(() => Date.now(), []);
+
+  // Review is scoped to one chapter at a time. Group the due cards by chapter
+  // so the rail can show per-chapter counts and the session can drill them
+  // independently. Recomputes after each grade (storedCards changes), which
+  // naturally trims the active chapter's badge in step with its queue.
+  const dueByChapter = useMemo(() => {
+    const m = new Map<string, Card[]>();
+    if (!opening) return m;
+    for (const c of buildCards(opening, storedCards, now)) {
+      if (c.due <= now) {
+        const arr = m.get(c.chapterId);
+        if (arr) arr.push(c);
+        else m.set(c.chapterId, [c]);
+      }
+    }
+    return m;
+  }, [opening, storedCards, now]);
+
+  const sortedChapters = useMemo(
+    () => (opening ? [...opening.chapters].sort((a, b) => a.order - b.order) : []),
+    [opening],
+  );
+
+  const totalDue = useMemo(() => {
+    let s = 0;
+    for (const arr of dueByChapter.values()) s += arr.length;
+    return s;
+  }, [dueByChapter]);
+
+  // First chapter with due cards — the session starts here. Frozen on mount so
+  // the active chapter doesn't silently jump as counts change; advancing is an
+  // explicit user choice (rail click or the "next chapter" button).
+  const [selectedChapterId, setSelectedChapterId] = useState<string>(
+    () =>
+      sortedChapters.find(c => (dueByChapter.get(c.id)?.length ?? 0) > 0)?.id ??
+      sortedChapters[0]?.id ??
+      '',
+  );
 
   if (!opening) return <NotFound />;
-  if (dueQueue.length === 0) return <NothingDue openingId={opening.id} />;
-  return <StudySession key={opening.id} opening={opening} initialQueue={dueQueue} />;
+  if (totalDue === 0) return <NothingDue openingId={opening.id} />;
+
+  const activeChapterId =
+    sortedChapters.find(c => c.id === selectedChapterId)?.id ??
+    sortedChapters[0]?.id ??
+    '';
+
+  return (
+    <ReviewSession
+      key={activeChapterId}
+      opening={opening}
+      chapters={sortedChapters}
+      dueByChapter={dueByChapter}
+      activeChapterId={activeChapterId}
+      onSelectChapter={setSelectedChapterId}
+      initialQueue={dueByChapter.get(activeChapterId) ?? []}
+      openingDue={totalDue}
+      openingsFile={openingsFile}
+      nextOpening={nextOpening}
+      stats={stats}
+      onGraded={onGraded}
+    />
+  );
 }
 
 function NotFound() {
@@ -92,17 +214,34 @@ function NothingDue({ openingId }: { openingId: string }) {
 
 type Phase = 'awaiting' | 'revealed' | 'correct' | 'wrong';
 
-function StudySession({
+function ReviewSession({
   opening,
+  chapters,
+  dueByChapter,
+  activeChapterId,
+  onSelectChapter,
   initialQueue,
+  openingDue,
+  openingsFile,
+  nextOpening,
+  stats,
+  onGraded,
 }: {
   opening: Opening;
+  chapters: Chapter[];
+  dueByChapter: Map<string, Card[]>;
+  activeChapterId: string;
+  onSelectChapter: (id: string) => void;
   initialQueue: Card[];
+  openingDue: number;
+  openingsFile: OpeningFileItem[] | undefined;
+  nextOpening: OpeningFileItem | undefined;
+  stats: { pass: number; fail: number };
+  onGraded: (g: Grade) => void;
 }) {
   const [queue] = useState(initialQueue);
   const [idx, setIdx] = useState(0);
   const [phase, setPhase] = useState<Phase>('awaiting');
-  const [stats, setStats] = useState({ pass: 0, fail: 0 });
 
   const finished = idx >= queue.length;
   const card = finished ? undefined : queue[idx];
@@ -113,38 +252,20 @@ function StudySession({
   );
   const expectedUci = card?.expectedUci;
 
-  /** Chapter the current card lives in. Surfaced in the right panel so the
-   * user always knows which storyline they're being tested on — a card from
-   * the "Najdorf English" chapter shouldn't be answered with the move from
-   * the "Najdorf Be3" chapter. */
-  const currentChapterName = useMemo(() => {
-    if (!card) return null;
-    return (
-      opening.chapters.find(c => c.id === card.chapterId)?.name ?? null
-    );
-  }, [card, opening.chapters]);
-
-  // While the user is being asked the question we show the position before
-  // the move. After they answer (right or wrong) we reveal the expected
-  // continuation so they see how the position should look.
   const showAnswer = phase !== 'awaiting' && expectedUci;
   const displayChess = useMemo(
     () => (showAnswer && expectedUci ? applyUci(chess, expectedUci) : chess),
     [chess, showAnswer, expectedUci],
   );
   // While choosing: highlight the opponent's last move (the move that reached
-  // this position) so the user can see what was played even if they missed the
-  // animation. After answering: highlight the revealed expected move.
+  // this position). After answering: highlight the revealed expected move.
   const displayLastMove = showAnswer ? expectedUci : card?.lastMove;
 
-  /** The annotation lives on the position *after* the expected move, so it
-   * comes into view together with the answer reveal. We look it up by the
-   * canonical position key and fall back to any legacy full-FEN entry so
-   * transpositions and pre-migration data both resolve. */
+  /** Annotation on the position *after* the expected move, resolved by
+   * canonical position key (with a legacy full-FEN fallback). */
   const annotation = useMemo(() => {
     if (!showAnswer) return undefined;
-    const target = fenOf(displayChess);
-    const key = positionKey(target);
+    const key = positionKey(fenOf(displayChess));
     const direct = opening.annotations?.[key];
     if (direct) return direct;
     if (opening.annotations) {
@@ -203,26 +324,6 @@ function StudySession({
     annotation,
   ]);
 
-  if (finished) {
-    return (
-      <main className="mx-auto max-w-md px-10 py-16 text-center">
-        <p className="text-2xl font-bold">Session terminée.</p>
-        <p className="mt-2 text-sm text-meta">
-          {stats.pass} bonne{stats.pass > 1 ? 's' : ''} ·{' '}
-          {stats.fail} erreur{stats.fail > 1 ? 's' : ''}
-        </p>
-        <div className="mt-8 flex justify-center gap-2.5">
-          <Link
-            to="/"
-            className="btn-accent flex h-11 items-center rounded-btn px-5 text-sm font-semibold"
-          >
-            Retour
-          </Link>
-        </div>
-      </main>
-    );
-  }
-
   const grade = (g: Grade) => {
     if (!card) return;
     const updated = review(card, g);
@@ -233,18 +334,23 @@ function StudySession({
       openingId: opening.id,
       grade: g,
     });
-    setStats(s => ({
-      pass: s.pass + (g >= 3 ? 1 : 0),
-      fail: s.fail + (g < 3 ? 1 : 0),
-    }));
+    onGraded(g);
     setIdx(i => i + 1);
     setPhase('awaiting');
   };
 
+  const remaining = Math.max(0, queue.length - idx);
+  // Program mode only: due left across every opening (the broadest scope).
+  const programDue = openingsFile?.reduce((sum, o) => sum + o.due, 0);
   const sessionPct = queue.length ? Math.round((idx / queue.length) * 100) : 0;
-  const remaining = queue.length - idx;
-  const expectedSan =
-    expectedUci ? uciToSanAt(fenOf(chess), expectedUci) : '—';
+  const counter = `${Math.min(idx + 1, queue.length)} / ${queue.length}`;
+  const activeChapterName =
+    chapters.find(c => c.id === activeChapterId)?.name ?? '';
+  const nextDueChapter = chapters.find(
+    c => c.id !== activeChapterId && (dueByChapter.get(c.id)?.length ?? 0) > 0,
+  );
+
+  const expectedSan = expectedUci ? uciToSanAt(fenOf(chess), expectedUci) : '—';
   const comment = annotation?.comment?.trim();
   const nagGlyph =
     annotation?.nag !== undefined ? (
@@ -257,15 +363,18 @@ function StudySession({
     ) : null;
 
   return (
-    <main className="mx-auto max-w-300 px-10 pt-6 pb-17.5">
-      <div className="mb-4 flex items-center justify-between gap-4">
+    <main className="mx-auto max-w-325 px-10 pt-6 pb-17.5">
+      {openingsFile && (
+        <OpeningsFile items={openingsFile} activeId={opening.id} />
+      )}
+      <div className="mb-5 flex items-center justify-between gap-4">
         <Link
           to="/"
           className="inline-flex items-center gap-2 text-[14.5px] font-semibold text-meta transition hover:text-ink"
         >
           ← Sortir
         </Link>
-        <div className="flex w-95 max-w-full items-center gap-3">
+        <div className="flex w-85 max-w-full items-center gap-3">
           <div className="h-1.75 flex-1 overflow-hidden rounded-full bg-track">
             <div
               className="h-full rounded-full bg-accent transition-all"
@@ -273,111 +382,146 @@ function StudySession({
             />
           </div>
           <span className="whitespace-nowrap text-[13px] font-semibold text-ink-muted tnum">
-            {idx + 1} / {queue.length}
+            {counter}
           </span>
         </div>
       </div>
 
-      <div className="grid items-start gap-11 lg:grid-cols-[1fr_380px]">
-        <section className="mx-auto flex w-full max-w-140 flex-col items-center gap-4">
-          <div className="relative w-full">
-            <Chessboard config={config} />
-            {showAnswer && annotation?.nag !== undefined && expectedUci && (
-              <NagSquareBadge
-                nag={annotation.nag}
-                square={expectedUci.slice(2, 4)}
-                orientation={opening.color}
-              />
-            )}
-          </div>
+      <div className="grid items-start gap-8 lg:grid-cols-[240px_1fr_340px]">
+        <ChapterRail
+          chapters={chapters}
+          dueByChapter={dueByChapter}
+          activeId={activeChapterId}
+          onSelect={onSelectChapter}
+        />
 
-          <div className="w-full rounded-[14px] border border-line bg-surface px-5 py-4.5 shadow-card">
-            {phase === 'awaiting' && (
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-base font-bold text-ink">Jouez le coup attendu</p>
-                <button
-                  onClick={() => setPhase('revealed')}
-                  className="h-10.5 shrink-0 rounded-[10px] border border-line-strong bg-surface-high px-4.5 text-sm font-semibold text-ink transition hover:bg-field"
-                >
-                  Révéler
-                </button>
+        <section className="flex flex-col items-center">
+          {card ? (
+            <div className="flex w-full max-w-140 flex-col items-center gap-4">
+              <div className="relative w-full">
+                <Chessboard config={config} />
+                {showAnswer && annotation?.nag !== undefined && expectedUci && (
+                  <NagSquareBadge
+                    nag={annotation.nag}
+                    square={expectedUci.slice(2, 4)}
+                    orientation={opening.color}
+                  />
+                )}
               </div>
-            )}
-            {phase === 'correct' && (
-              <>
-                <div className="mb-3.5 flex items-center justify-between gap-3">
-                  <span className="flex items-center gap-2 text-[17px] font-bold text-success">
-                    Correct.
-                    {nagGlyph}
-                  </span>
-                  <span className="text-[13.5px] text-meta">Évaluez votre rappel</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2.5">
-                  <GradeButton onClick={() => grade(3)} label="Difficile" tone="warning" />
-                  <GradeButton onClick={() => grade(4)} label="Bien" tone="success" />
-                  <GradeButton onClick={() => grade(5)} label="Facile" tone="info" />
-                </div>
-                {comment && (
-                  <p className="mt-3.5 border-l-2 border-line pl-3 text-sm italic text-ink-soft">
-                    {comment}
-                  </p>
+
+              <div className="w-full rounded-[14px] border border-line bg-surface px-5 py-4.5 shadow-card">
+                {phase === 'awaiting' && (
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-base font-bold text-ink">Jouez le coup attendu</p>
+                    <button
+                      onClick={() => setPhase('revealed')}
+                      className="h-10.5 shrink-0 rounded-[10px] border border-line-strong bg-surface-high px-4.5 text-sm font-semibold text-ink transition hover:bg-field"
+                    >
+                      Révéler
+                    </button>
+                  </div>
                 )}
-              </>
-            )}
-            {phase === 'revealed' && (
-              <>
-                <div className="flex items-center gap-2">
-                  <span className="text-[17px] font-bold text-warning-text">Révélé.</span>
-                  {nagGlyph}
-                </div>
-                <p className="mt-2 text-[13px] text-meta">
-                  Coup attendu :{' '}
-                  <span className="font-semibold text-ink tnum">
-                    <FigurineSan san={expectedSan} />
-                  </span>
-                </p>
-                {comment && (
-                  <p className="mt-2 border-l-2 border-line pl-3 text-sm italic text-ink-soft">
-                    {comment}
-                  </p>
+                {phase === 'correct' && (
+                  <>
+                    <div className="mb-3.5 flex items-center justify-between gap-3">
+                      <span className="flex items-center gap-2 text-[17px] font-bold text-success">
+                        Correct.
+                        {nagGlyph}
+                      </span>
+                      <span className="text-[13.5px] text-meta">Évaluez votre rappel</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2.5">
+                      <GradeButton onClick={() => grade(3)} label="Difficile" tone="warning" />
+                      <GradeButton onClick={() => grade(4)} label="Bien" tone="success" />
+                      <GradeButton onClick={() => grade(5)} label="Facile" tone="info" />
+                    </div>
+                    {comment && (
+                      <p className="mt-3.5 border-l-2 border-line pl-3 text-sm italic text-ink-soft">
+                        {comment}
+                      </p>
+                    )}
+                  </>
                 )}
-                <button
-                  onClick={() => grade(0)}
-                  className="mt-3.5 w-full rounded-[10px] border border-warning-border bg-warning-soft py-3 text-sm font-semibold text-warning-text transition hover:brightness-[0.98]"
+                {(phase === 'revealed' || phase === 'wrong') && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-[17px] font-bold ${phase === 'revealed' ? 'text-warning-text' : 'text-danger'}`}
+                      >
+                        {phase === 'revealed' ? 'Révélé.' : 'Erreur.'}
+                      </span>
+                      {nagGlyph}
+                    </div>
+                    <p className="mt-2 text-[13px] text-meta">
+                      Coup attendu :{' '}
+                      <span className="font-semibold text-ink tnum">
+                        <FigurineSan san={expectedSan} />
+                      </span>
+                    </p>
+                    {comment && (
+                      <p className="mt-2 border-l-2 border-line pl-3 text-sm italic text-ink-soft">
+                        {comment}
+                      </p>
+                    )}
+                    <button
+                      onClick={() => grade(0)}
+                      className={`mt-3.5 w-full rounded-[10px] border py-3 text-sm font-semibold transition hover:brightness-[0.98] ${
+                        phase === 'revealed'
+                          ? 'border-warning-border bg-warning-soft text-warning-text'
+                          : 'border-danger-border bg-danger-soft text-danger-text'
+                      }`}
+                    >
+                      Continuer
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex w-full max-w-140 flex-col items-center rounded-[14px] border border-line bg-surface px-6 py-14 text-center shadow-card">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-success-soft text-2xl text-success">
+                ✓
+              </span>
+              <p className="mt-4 text-lg font-bold">
+                {nextDueChapter ? 'Chapitre à jour' : 'Ouverture à jour'}
+              </p>
+              <p className="mt-1 text-sm text-meta">
+                {nextDueChapter
+                  ? 'Passe au chapitre suivant ou choisis-en un autre à gauche.'
+                  : nextOpening
+                    ? `Au suivant dans le programme : ${nextOpening.name}.`
+                    : 'Plus rien à réviser.'}
+              </p>
+              <div className="mt-6 flex justify-center gap-2.5">
+                {nextDueChapter ? (
+                  <button
+                    onClick={() => onSelectChapter(nextDueChapter.id)}
+                    className="btn-accent flex h-11 items-center rounded-btn px-5 text-sm font-semibold"
+                  >
+                    Chapitre suivant
+                  </button>
+                ) : openingsFile && nextOpening ? (
+                  <Link
+                    to="/openings/$openingId/study"
+                    params={{ openingId: nextOpening.id }}
+                    search={{ program: true }}
+                    className="btn-accent flex h-11 items-center rounded-btn px-5 text-sm font-semibold"
+                  >
+                    Ouverture suivante
+                  </Link>
+                ) : null}
+                <Link
+                  to="/"
+                  className="flex h-11 items-center rounded-btn border border-line-strong bg-surface-high px-5 text-sm font-semibold text-ink transition hover:bg-field"
                 >
-                  Continuer
-                </button>
-              </>
-            )}
-            {phase === 'wrong' && (
-              <>
-                <div className="flex items-center gap-2">
-                  <span className="text-[17px] font-bold text-danger">Erreur.</span>
-                  {nagGlyph}
-                </div>
-                <p className="mt-2 text-[13px] text-meta">
-                  Coup attendu :{' '}
-                  <span className="font-semibold text-ink tnum">
-                    <FigurineSan san={expectedSan} />
-                  </span>
-                </p>
-                {comment && (
-                  <p className="mt-2 border-l-2 border-line pl-3 text-sm italic text-ink-soft">
-                    {comment}
-                  </p>
-                )}
-                <button
-                  onClick={() => grade(0)}
-                  className="mt-3.5 w-full rounded-[10px] border border-danger-border bg-danger-soft py-3 text-sm font-semibold text-danger-text transition hover:brightness-[0.98]"
-                >
-                  Continuer
-                </button>
-              </>
-            )}
-          </div>
+                  Retour
+                </Link>
+              </div>
+            </div>
+          )}
         </section>
 
-        <aside className="flex w-full flex-col gap-4">
+        <aside className="flex flex-col gap-4">
           <div className="rounded-card border border-line bg-surface p-5.5 shadow-card">
             <div className="text-[21px] font-extrabold tracking-[-0.01em]">
               {opening.name}
@@ -385,14 +529,17 @@ function StudySession({
             <div className="mt-1 text-sm text-meta">
               {opening.color === 'white' ? 'Trait aux blancs' : 'Trait aux noirs'}
             </div>
-            {currentChapterName && (
+            {activeChapterName && (
               <div className="mt-4 border-t border-line pt-4">
+                <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
+                  Chapitre
+                </div>
                 <span
                   className="inline-flex max-w-full items-center gap-1.75 rounded-full border border-accent-soft-border bg-accent-soft px-2.75 py-1.25 text-[12.5px] font-semibold text-accent-soft-text"
-                  title={currentChapterName}
+                  title={activeChapterName}
                 >
                   <span className="h-1.75 w-1.75 shrink-0 rounded-full bg-accent-dot" />
-                  <span className="truncate">{currentChapterName}</span>
+                  <span className="truncate">{activeChapterName}</span>
                 </span>
               </div>
             )}
@@ -403,29 +550,152 @@ function StudySession({
               Cette session
             </div>
             <div className="flex gap-5.5">
-              <div>
-                <div className="text-[26px] font-extrabold leading-none text-success">
-                  {stats.pass}
-                </div>
-                <div className="mt-1 text-[12.5px] text-meta">bonnes</div>
+              <Stat value={stats.pass} label="bonnes" tone="text-success" />
+              <Stat value={stats.fail} label="erreurs" tone="text-danger" />
+            </div>
+            <div className="mt-4 border-t border-line pt-4">
+              <div className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
+                Restantes
               </div>
-              <div>
-                <div className="text-[26px] font-extrabold leading-none text-danger">
-                  {stats.fail}
-                </div>
-                <div className="mt-1 text-[12.5px] text-meta">erreurs</div>
-              </div>
-              <div>
-                <div className="text-[26px] font-extrabold leading-none text-accent">
-                  {remaining}
-                </div>
-                <div className="mt-1 text-[12.5px] text-meta">restantes</div>
+              <div className="space-y-2 text-sm">
+                <RemainingRow label="Ce chapitre" value={remaining} tone="text-accent" />
+                {openingsFile ? (
+                  <>
+                    <RemainingRow label="Cette ouverture" value={openingDue} tone="text-ink" />
+                    <RemainingRow label="Cette session" value={programDue ?? 0} tone="text-ink-soft" />
+                  </>
+                ) : (
+                  <RemainingRow label="Cette session" value={openingDue} tone="text-ink" />
+                )}
               </div>
             </div>
           </div>
         </aside>
       </div>
     </main>
+  );
+}
+
+function OpeningsFile({
+  items,
+  activeId,
+}: {
+  items: OpeningFileItem[];
+  activeId: string;
+}) {
+  return (
+    <div className="mb-5 flex items-center gap-2 overflow-x-auto pb-1">
+      <span className="shrink-0 pr-1 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
+        À réviser
+      </span>
+      {items.map(o => {
+        const active = o.id === activeId;
+        return (
+          <Link
+            key={o.id}
+            to="/openings/$openingId/study"
+            params={{ openingId: o.id }}
+            search={{ program: true }}
+            className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition ${
+              active
+                ? 'border-accent bg-accent-soft text-accent-soft-text'
+                : 'border-line-strong bg-surface text-ink-soft hover:bg-surface-high'
+            }`}
+          >
+            {o.name}
+            {o.due > 0 && (
+              <span
+                className={`rounded-full px-1.5 text-[11px] font-bold tnum ${
+                  active ? 'bg-accent text-accent-on' : 'bg-track text-ink-soft'
+                }`}
+              >
+                {o.due}
+              </span>
+            )}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+function ChapterRail({
+  chapters,
+  dueByChapter,
+  activeId,
+  onSelect,
+}: {
+  chapters: Chapter[];
+  dueByChapter: Map<string, Card[]>;
+  activeId: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <aside className="flex flex-col gap-1.5">
+      <h2 className="mx-1 mb-3.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-ink-muted">
+        Chapitres
+      </h2>
+      {chapters.map(c => {
+        const active = c.id === activeId;
+        const due = dueByChapter.get(c.id)?.length ?? 0;
+        return (
+          <button
+            key={c.id}
+            onClick={() => onSelect(c.id)}
+            title={c.name}
+            className={`flex w-full items-center gap-2.5 rounded-xl border px-3.5 py-3 text-left text-sm font-medium transition ${
+              active
+                ? 'border-line bg-surface text-ink shadow-resting'
+                : 'border-transparent text-ink-soft hover:bg-track hover:text-ink'
+            }`}
+          >
+            <span
+              className={`h-4.5 w-0.75 shrink-0 rounded-full ${active ? 'bg-accent' : 'bg-transparent'}`}
+            />
+            <span className="flex-1 truncate">{c.name}</span>
+            {due > 0 && (
+              <span className="shrink-0 rounded-full border border-accent-soft-border bg-accent-soft px-2 py-px text-[11px] font-bold text-accent-soft-text tnum">
+                {due}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </aside>
+  );
+}
+
+function Stat({
+  value,
+  label,
+  tone,
+}: {
+  value: number;
+  label: string;
+  tone: string;
+}) {
+  return (
+    <div className="text-center">
+      <div className={`text-[26px] font-extrabold leading-none ${tone}`}>{value}</div>
+      <div className="mt-1 text-[12.5px] text-meta">{label}</div>
+    </div>
+  );
+}
+
+function RemainingRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: string;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-ink-soft">{label}</span>
+      <span className={`font-bold tnum ${tone}`}>{value}</span>
+    </div>
   );
 }
 

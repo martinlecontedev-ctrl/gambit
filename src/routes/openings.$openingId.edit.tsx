@@ -785,6 +785,7 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
             <Link
               to="/openings/$openingId/study"
               params={{ openingId: opening.id }}
+              search={{ program: false }}
               className="btn-accent flex h-10 items-center rounded-[10px] px-3.75 text-[13.5px] font-semibold"
             >
               Réviser
