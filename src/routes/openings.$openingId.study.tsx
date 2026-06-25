@@ -27,6 +27,10 @@ import { useStored } from '../storage/store';
 /** One entry of the program's opening queue (review-all mode). */
 type OpeningFileItem = { id: string; name: string; due: number };
 
+/** Outcome of one review for the session counters. A reveal is a recall miss
+ * (graded 0, same SRS effect as a wrong move) but tallied on its own. */
+type ReviewOutcome = 'pass' | 'fail' | 'revealed';
+
 type StudySearch = { program: boolean };
 
 export const Route = createFileRoute('/openings/$openingId/study')({
@@ -74,11 +78,12 @@ function Study() {
   // switches and program opening-to-opening navigation (TanStack reuses this
   // component across param changes). It resets only when the study route is
   // left and re-entered — i.e. a fresh session, program or single opening.
-  const [stats, setStats] = useState({ pass: 0, fail: 0 });
-  const recordGrade = (g: Grade) =>
+  const [stats, setStats] = useState({ pass: 0, fail: 0, revealed: 0 });
+  const recordGrade = (outcome: ReviewOutcome) =>
     setStats(s => ({
-      pass: s.pass + (g >= 3 ? 1 : 0),
-      fail: s.fail + (g < 3 ? 1 : 0),
+      pass: s.pass + (outcome === 'pass' ? 1 : 0),
+      fail: s.fail + (outcome === 'fail' ? 1 : 0),
+      revealed: s.revealed + (outcome === 'revealed' ? 1 : 0),
     }));
 
   return (
@@ -106,8 +111,8 @@ function StudyImpl({
   storedCards: Card[];
   openingsFile: OpeningFileItem[] | undefined;
   nextOpening: OpeningFileItem | undefined;
-  stats: { pass: number; fail: number };
-  onGraded: (g: Grade) => void;
+  stats: { pass: number; fail: number; revealed: number };
+  onGraded: (outcome: ReviewOutcome) => void;
 }) {
   // Frozen at mount so due status (and the per-chapter counts) stay stable as
   // cards get rescheduled during the session.
@@ -236,8 +241,8 @@ function ReviewSession({
   openingDue: number;
   openingsFile: OpeningFileItem[] | undefined;
   nextOpening: OpeningFileItem | undefined;
-  stats: { pass: number; fail: number };
-  onGraded: (g: Grade) => void;
+  stats: { pass: number; fail: number; revealed: number };
+  onGraded: (outcome: ReviewOutcome) => void;
 }) {
   const [queue] = useState(initialQueue);
   const [idx, setIdx] = useState(0);
@@ -334,7 +339,7 @@ function ReviewSession({
       openingId: opening.id,
       grade: g,
     });
-    onGraded(g);
+    onGraded(g >= 3 ? 'pass' : phase === 'revealed' ? 'revealed' : 'fail');
     setIdx(i => i + 1);
     setPhase('awaiting');
   };
@@ -552,6 +557,7 @@ function ReviewSession({
             <div className="flex gap-5.5">
               <Stat value={stats.pass} label="bonnes" tone="text-success" />
               <Stat value={stats.fail} label="erreurs" tone="text-danger" />
+              <Stat value={stats.revealed} label="révélés" tone="text-warning-text" />
             </div>
             <div className="mt-4 border-t border-line pt-4">
               <div className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
