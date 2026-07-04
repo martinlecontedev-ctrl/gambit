@@ -24,6 +24,14 @@ export type Line = {
   parentLineId?: string;
   /** UCI moves from the initial position. */
   moves: string[];
+  /** Review windows over `moves`, as ply intervals each covering
+   * `[start, end)` — `end` absent = open-ended, so moves appended later are
+   * drilled without re-editing. A list because the segment editor (common
+   * trunk vs branches) can produce non-contiguous coverage. Normalized on
+   * write: sorted, merged, absent = whole line, `[]` = nothing drilled.
+   * Cards outside every covering line's windows are not built (not due, not
+   * counted in mastery) but their stored SRS stats survive a change. */
+  reviewRanges?: { start: number; end?: number }[];
 };
 
 /**

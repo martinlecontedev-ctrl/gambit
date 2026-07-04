@@ -5,6 +5,7 @@ import {
   continuationsAt,
   effectiveParentId,
   parentForNewVariant,
+  segmentLines,
 } from './tree';
 import type { Line } from './types';
 
@@ -106,5 +107,67 @@ describe('buildPrefixTrie / continuationsAt', () => {
 
   it('returns nothing past the end of a line', () => {
     expect(continuationsAt(trie, petrov, 10)).toEqual([]);
+  });
+});
+
+describe('segmentLines', () => {
+  it('keeps a single line as one depth-0 segment', () => {
+    const main = line({ id: 'm', moves: ['e2e4', 'e7e5', 'g1f3'] });
+    expect(segmentLines([main])).toEqual([
+      { start: 0, end: 3, moves: ['e2e4', 'e7e5', 'g1f3'], lineIds: ['m'], depth: 0 },
+    ]);
+  });
+
+  it('splits trunk and branches at the first fork', () => {
+    const ruy = line({ id: 'ruy', moves: ['e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5'] });
+    const petrov = line({ id: 'pet', moves: ['e2e4', 'e7e5', 'g1f3', 'g8f6'] });
+    const segs = segmentLines([ruy, petrov]);
+    expect(segs).toHaveLength(3);
+    // Trunk: 1.e4 e5 2.Nf3, shared by both.
+    expect(segs[0]).toMatchObject({ start: 0, end: 3, depth: 0 });
+    expect(segs[0].lineIds.sort()).toEqual(['pet', 'ruy']);
+    // Main continuation first (root line inserted first).
+    expect(segs[1]).toMatchObject({
+      start: 3,
+      end: 5,
+      moves: ['b8c6', 'f1b5'],
+      lineIds: ['ruy'],
+      depth: 1,
+    });
+    expect(segs[2]).toMatchObject({ start: 3, end: 4, moves: ['g8f6'], depth: 1 });
+  });
+
+  it('nests depths across successive forks', () => {
+    const a = line({ id: 'a', moves: ['e2e4', 'e7e5', 'g1f3', 'b8c6'] });
+    const b = line({ id: 'b', moves: ['e2e4', 'e7e5', 'g1f3', 'g8f6'] });
+    const c = line({ id: 'c', moves: ['e2e4', 'c7c5'] });
+    const segs = segmentLines([a, b, c]);
+    // e4 trunk → (e5 g1f3 at depth 1 → two depth-2 leaves) + (c5 at depth 1).
+    expect(segs.map(s => [s.depth, s.moves.join(' ')])).toEqual([
+      [0, 'e2e4'],
+      [1, 'e7e5 g1f3'],
+      [2, 'b8c6'],
+      [2, 'g8f6'],
+      [1, 'c7c5'],
+    ]);
+  });
+
+  it('puts first-move alternatives all at depth 0', () => {
+    const e4 = line({ id: 'k', moves: ['e2e4', 'e7e5'] });
+    const d4 = line({ id: 'q', moves: ['d2d4', 'd7d5'] });
+    const segs = segmentLines([e4, d4]);
+    expect(segs.map(s => [s.depth, s.start])).toEqual([
+      [0, 0],
+      [0, 0],
+    ]);
+  });
+
+  it('does not split on a line that merely ends early', () => {
+    const long = line({ id: 'l', moves: ['e2e4', 'e7e5', 'g1f3', 'b8c6'] });
+    const short = line({ id: 's', moves: ['e2e4', 'e7e5'] });
+    const segs = segmentLines([long, short]);
+    expect(segs).toHaveLength(1);
+    expect(segs[0]).toMatchObject({ start: 0, end: 4 });
+    expect(segs[0].lineIds.sort()).toEqual(['l', 's']);
   });
 });

@@ -158,6 +158,16 @@ function Guide() {
               ouvertures qui ont des cartes dues.
             </Item>
             <Item>
+              Au survol d'un chapitre dans l'éditeur, <Kbd>◎</Kbd> ouvre{' '}
+              <em>Définir la révision</em> : le tronc commun d'abord, puis
+              chaque branche à partir de sa bifurcation. Clique le premier et
+              le dernier coup à driller dans chaque bloc (<Kbd>Aucun</Kbd> pour
+              sauter un tronc connu par cœur). Hors fenêtre, rien n'est dû ni
+              compté dans la maîtrise ; le progrès revient si tu réélargis. Une
+              fenêtre qui va jusqu'au dernier coup reste ouverte : les coups
+              ajoutés ensuite sont drillés d'office.
+            </Item>
+            <Item>
               Après réponse, le commentaire et les flèches associés à la position
               sortent sous le plateau et sur le board.
             </Item>

@@ -84,6 +84,61 @@ export function buildPrefixTrie(lines: Line[]): TrieNode {
   return root;
 }
 
+export type Segment = {
+  /** Absolute ply range `[start, end)` the segment covers. */
+  start: number;
+  end: number;
+  /** UCI moves of the segment — identical in every line passing through. */
+  moves: string[];
+  /** Lines whose sequence enters the segment (early-ending lines may stop
+   * before its tail — clamp per line when mapping windows back). */
+  lineIds: string[];
+  /** Nesting level: 0 = trunk (or top-level alternatives when the lines
+   * fork on the very first move), +1 under each fork. */
+  depth: number;
+};
+
+/**
+ * Decompose a chapter's lines into linear segments: the trunk shared by all
+ * variants up to the first fork, then one segment per branch between
+ * consecutive forks. Depth-first, main continuation first (trie insertion
+ * order — the root line is inserted first). Every ply of every line belongs
+ * to exactly one segment.
+ */
+export function segmentLines(lines: Line[]): Segment[] {
+  const out: Segment[] = [];
+
+  const walkSegment = (
+    firstUci: string,
+    firstNode: TrieNode,
+    startPly: number,
+    depth: number,
+  ) => {
+    const moves = [firstUci];
+    const lineIds = [...firstNode.lineIds];
+    let cur = firstNode;
+    let ply = startPly + 1;
+    while (cur.children.size === 1) {
+      const [uci, child] = [...cur.children][0];
+      moves.push(uci);
+      cur = child;
+      ply++;
+    }
+    out.push({ start: startPly, end: ply, moves, lineIds, depth });
+    for (const [uci, child] of cur.children) {
+      walkSegment(uci, child, ply, depth + 1);
+    }
+  };
+
+  const root = buildPrefixTrie(lines);
+  // A single child = a real trunk at depth 0; an immediate fork = top-level
+  // alternatives, all at depth 0.
+  for (const [uci, child] of root.children) {
+    walkSegment(uci, child, 0, 0);
+  }
+  return out;
+}
+
 export type Continuation = {
   uci: string;
   /** All lines that contain this continuation at the queried depth. */

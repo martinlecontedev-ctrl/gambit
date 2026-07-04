@@ -89,6 +89,24 @@ export function buildCards(
     // every depth-vs-side relationship.
     const userTurnParity = turnColor(startChess) === opening.color ? 0 : 1;
 
+    // Review windows, keyed by line. A move at ply `depth` is drilled when at
+    // least ONE line playing it there covers that ply — union semantics, so a
+    // prefix shared with a variant stays drilled as long as any branch wants it.
+    const rangesByLine = new Map<string, { start: number; end?: number }[]>();
+    for (const l of chapterLines) {
+      if (l.reviewRanges) rangesByLine.set(l.id, l.reviewRanges);
+    }
+    const plyCovered = (lineIds: Set<string>, ply: number): boolean => {
+      for (const id of lineIds) {
+        const rs = rangesByLine.get(id);
+        if (!rs) return true;
+        for (const r of rs) {
+          if (ply >= r.start && (r.end === undefined || ply < r.end)) return true;
+        }
+      }
+      return false;
+    };
+
     const walk = (
       node: TrieNode,
       depth: number,
@@ -97,7 +115,8 @@ export function buildCards(
     ) => {
       if (depth % 2 === userTurnParity) {
         const fen = fenOf(chess);
-        for (const uci of node.children.keys()) {
+        for (const [uci, child] of node.children) {
+          if (!plyCovered(child.lineIds, depth)) continue;
           const id = cardIdFor(opening.id, chapter.id, fen, uci);
           if (seen.has(id)) continue;
           seen.add(id);

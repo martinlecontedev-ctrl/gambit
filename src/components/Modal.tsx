@@ -10,11 +10,14 @@ export function Modal({
   onClose,
   title,
   children,
+  wide,
 }: {
   open: boolean;
   onClose: () => void;
   title?: string;
   children: ReactNode;
+  /** Content-heavy dialogs (move lists) get a wider panel. */
+  wide?: boolean;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -33,7 +36,7 @@ export function Modal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-card border border-line bg-paper p-5 shadow-board"
+        className={`w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} rounded-card border border-line bg-paper p-5 shadow-board`}
         onClick={e => e.stopPropagation()}
       >
         {title && (

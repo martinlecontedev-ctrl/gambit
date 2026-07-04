@@ -30,6 +30,7 @@ import {
   continuationsAt,
   effectiveParentId,
   parentForNewVariant,
+  segmentLines,
 } from '../domain/tree';
 import type {
   Annotation,
@@ -671,6 +672,28 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
   const [renamingChapterId, setRenamingChapterId] = useState<string | undefined>();
   const [chapterRenameDraft, setChapterRenameDraft] = useState('');
 
+  // --- Per-chapter review window --------------------------------------------
+  const [rangeChapterId, setRangeChapterId] = useState<string | undefined>();
+  const rangeChapter = rangeChapterId
+    ? opening.chapters.find(c => c.id === rangeChapterId)
+    : undefined;
+
+  /** Persist the windows drafted in the modal. `undefined` clears a line's
+   * windows (JSON.stringify drops the undefined key on write). */
+  const saveReviewRanges = (
+    chapterId: string,
+    ranges: Map<string, { start: number; end?: number }[] | undefined>,
+  ) => {
+    updateOpening(latest => ({
+      ...latest,
+      lines: latest.lines.map(l =>
+        l.chapterId === chapterId && ranges.has(l.id)
+          ? { ...l, reviewRanges: ranges.get(l.id) }
+          : l,
+      ),
+    }));
+  };
+
   const submitChapterRename = (chapterId: string) => {
     const trimmed = chapterRenameDraft.trim();
     setRenamingChapterId(undefined);
@@ -748,9 +771,13 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
                 chapter={c}
                 active={c.id === currentChapterId}
                 canDelete={opening.chapters.length > 1}
+                hasCustomRange={opening.lines.some(
+                  l => l.chapterId === c.id && l.reviewRanges !== undefined,
+                )}
                 renaming={renamingChapterId === c.id}
                 renameDraft={chapterRenameDraft}
                 onSelect={() => switchToChapter(c.id)}
+                onDefineReview={() => setRangeChapterId(c.id)}
                 onRenameStart={() => {
                   setRenamingChapterId(c.id);
                   setChapterRenameDraft(c.name);
@@ -977,6 +1004,18 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
       {exportOpen && (
         <ExportPgnModal onClose={() => setExportOpen(false)} opening={opening} />
       )}
+
+      {rangeChapter && (
+        <ReviewRangeModal
+          opening={opening}
+          chapter={rangeChapter}
+          onSave={ranges => {
+            saveReviewRanges(rangeChapter.id, ranges);
+            setRangeChapterId(undefined);
+          }}
+          onClose={() => setRangeChapterId(undefined)}
+        />
+      )}
       </div>
     </main>
   );
@@ -986,9 +1025,11 @@ function ChapterItem({
   chapter,
   active,
   canDelete,
+  hasCustomRange,
   renaming,
   renameDraft,
   onSelect,
+  onDefineReview,
   onRenameStart,
   onRenameChange,
   onRenameSubmit,
@@ -998,9 +1039,11 @@ function ChapterItem({
   chapter: Chapter;
   active: boolean;
   canDelete: boolean;
+  hasCustomRange: boolean;
   renaming: boolean;
   renameDraft: string;
   onSelect: () => void;
+  onDefineReview: () => void;
   onRenameStart: () => void;
   onRenameChange: (v: string) => void;
   onRenameSubmit: () => void;
@@ -1037,10 +1080,28 @@ function ChapterItem({
             className={`h-4.5 w-0.75 shrink-0 rounded-full ${active ? 'bg-accent' : 'bg-transparent'}`}
           />
           <span className="truncate">{chapter.name}</span>
+          {hasCustomRange && (
+            <span
+              className="shrink-0 text-[13px] font-bold leading-none text-accent"
+              title="Révision limitée à une fenêtre de coups"
+            >
+              ◎
+            </span>
+          )}
         </button>
       )}
       {!renaming && (
         <div className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-line bg-surface-high px-1 py-0.5 opacity-0 shadow-resting transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+          <button
+            onClick={e => {
+              e.stopPropagation();
+              onDefineReview();
+            }}
+            title="Définir la révision (fenêtre de coups à driller)"
+            className="rounded p-1 text-xs text-ink-soft transition hover:bg-track hover:text-ink"
+          >
+            ◎
+          </button>
           <button
             onClick={e => {
               e.stopPropagation();
@@ -1127,6 +1188,317 @@ function ChapterNameModal({
           </button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+type SegmentDraft = {
+  /** Ply window [start, end) drafted for the segment; start === end means
+   * nothing drilled in it. */
+  start: number;
+  end: number;
+  /** True between the first and the second boundary click. */
+  picking: boolean;
+};
+
+/**
+ * Per-chapter review window editor, organized like the variation tree: the
+ * trunk shared by every variant comes first, then one block per branch from
+ * its fork on — no move is listed twice. Within a block, first click marks
+ * the start of the window, second click the end (order-agnostic); `Aucun`
+ * empties the block (e.g. a trunk known by heart). Windows are normalized on
+ * save: full coverage → no ranges stored; a window reaching a line's current
+ * last move stays open-ended so later additions join the drill.
+ */
+function ReviewRangeModal({
+  opening,
+  chapter,
+  onSave,
+  onClose,
+}: {
+  opening: Opening;
+  chapter: Chapter;
+  onSave: (ranges: Map<string, { start: number; end?: number }[] | undefined>) => void;
+  onClose: () => void;
+}) {
+  const startFen = chapter.startFen ?? START_FEN;
+  const lines = useMemo(
+    () => opening.lines.filter(l => l.chapterId === chapter.id && l.moves.length > 0),
+    [opening.lines, chapter.id],
+  );
+  const segments = useMemo(() => segmentLines(lines), [lines]);
+
+  const meta = useMemo(() => {
+    const c = chessFromFen(startFen);
+    return {
+      fullmove: c.fullmoves,
+      startsBlack: turnColor(c) === 'black',
+      userParity: turnColor(c) === opening.color ? 0 : 1,
+    };
+  }, [startFen, opening.color]);
+
+  /** SAN per segment, resolved on a covering line long enough to reach its
+   * tail (the first line of `lineIds` may end early). */
+  const sansBySegment = useMemo(() => {
+    const cache = new Map<string, string[]>();
+    return segments.map(seg => {
+      const rep = lines.find(
+        l => seg.lineIds.includes(l.id) && l.moves.length >= seg.end,
+      );
+      if (!rep) return seg.moves;
+      let sans = cache.get(rep.id);
+      if (!sans) {
+        sans = lineToSan(rep.moves, startFen);
+        cache.set(rep.id, sans);
+      }
+      return sans.slice(seg.start, seg.end);
+    });
+  }, [segments, lines, startFen]);
+
+  const [drafts, setDrafts] = useState<SegmentDraft[]>(() => {
+    const lineById = new Map(lines.map(l => [l.id, l]));
+    const covered = (lineIds: string[], ply: number): boolean => {
+      for (const id of lineIds) {
+        const l = lineById.get(id);
+        if (!l || ply >= l.moves.length) continue;
+        const rs = l.reviewRanges;
+        if (!rs) return true;
+        for (const r of rs) {
+          if (ply >= r.start && (r.end === undefined || ply < r.end)) return true;
+        }
+      }
+      return false;
+    };
+    return segments.map(seg => {
+      let lo = -1;
+      let hi = -1;
+      for (let p = seg.start; p < seg.end; p++) {
+        if (covered(seg.lineIds, p)) {
+          if (lo < 0) lo = p;
+          hi = p;
+        }
+      }
+      // Holes inside one segment (possible after tree edits moved a fork)
+      // collapse to the enclosing window — the user re-narrows if needed.
+      return lo < 0
+        ? { start: seg.start, end: seg.start, picking: false }
+        : { start: lo, end: hi + 1, picking: false };
+    });
+  });
+
+  const clickPly = (segIdx: number, ply: number) => {
+    setDrafts(prev =>
+      prev.map((d, i) => {
+        if (i !== segIdx) return d;
+        if (!d.picking) return { start: ply, end: ply + 1, picking: true };
+        if (ply >= d.start) return { start: d.start, end: ply + 1, picking: false };
+        return { start: ply, end: d.end, picking: false };
+      }),
+    );
+  };
+
+  const setWholeSegment = (segIdx: number) =>
+    setDrafts(prev =>
+      prev.map((d, i) =>
+        i === segIdx
+          ? { start: segments[i].start, end: segments[i].end, picking: false }
+          : d,
+      ),
+    );
+
+  const setEmptySegment = (segIdx: number) =>
+    setDrafts(prev =>
+      prev.map((d, i) =>
+        i === segIdx
+          ? { start: segments[i].start, end: segments[i].start, picking: false }
+          : d,
+      ),
+    );
+
+  /** `3.` / `3…` label for the ply, honouring a custom starting position. */
+  const plyLabel = (ply: number): string => {
+    const slot = ply + (meta.startsBlack ? 1 : 0);
+    const num = meta.fullmove + Math.floor(slot / 2);
+    return slot % 2 === 0 ? `${num}.` : `${num}…`;
+  };
+
+  const isWhitePly = (ply: number): boolean =>
+    (ply + (meta.startsBlack ? 1 : 0)) % 2 === 0;
+
+  const userMovesIn = (d: SegmentDraft): number => {
+    let n = 0;
+    for (let i = d.start; i < d.end; i++) {
+      if (i % 2 === meta.userParity) n++;
+    }
+    return n;
+  };
+
+  const totalDrilled = drafts.reduce((s, d) => s + userMovesIn(d), 0);
+  const topLevelCount = segments.filter(s => s.start === 0).length;
+
+  const segLabel = (segIdx: number): string => {
+    const seg = segments[segIdx];
+    if (seg.start === 0 && topLevelCount === 1) {
+      return segments.length === 1 ? 'Ligne principale' : 'Tronc commun';
+    }
+    return `${plyLabel(seg.start)} ${sansBySegment[segIdx][0] ?? ''}`;
+  };
+
+  const submit = () => {
+    // Each segment window applies to every line passing through it; a line's
+    // stored ranges are the merge of its segments' windows, clamped to its
+    // own length (early-ending lines).
+    const intervalsByLine = new Map<string, { start: number; end: number }[]>(
+      lines.map(l => [l.id, []]),
+    );
+    segments.forEach((seg, i) => {
+      const d = drafts[i];
+      if (!d || d.end <= d.start) return;
+      for (const id of seg.lineIds) {
+        intervalsByLine.get(id)?.push({ start: d.start, end: d.end });
+      }
+    });
+    const ranges = new Map<string, { start: number; end?: number }[] | undefined>();
+    for (const l of lines) {
+      const len = l.moves.length;
+      const clamped = (intervalsByLine.get(l.id) ?? [])
+        .map(v => ({ start: v.start, end: Math.min(v.end, len) }))
+        .filter(v => v.end > v.start)
+        .sort((a, b) => a.start - b.start);
+      const merged: { start: number; end: number }[] = [];
+      for (const v of clamped) {
+        const last = merged[merged.length - 1];
+        if (last && v.start <= last.end) last.end = Math.max(last.end, v.end);
+        else merged.push({ ...v });
+      }
+      if (merged.length === 1 && merged[0].start === 0 && merged[0].end >= len) {
+        ranges.set(l.id, undefined);
+      } else {
+        // The tail interval reaching the line's current end stays open-ended.
+        ranges.set(
+          l.id,
+          merged.map(v => (v.end >= len ? { start: v.start } : v)),
+        );
+      }
+    }
+    onSave(ranges);
+  };
+
+  return (
+    <Modal open wide onClose={onClose} title={`Définir la révision — ${chapter.name}`}>
+      <div className="space-y-4">
+        <p className="text-xs text-meta">
+          Le tronc commun regroupe les coups partagés par toutes les variantes ;
+          chaque branche se règle à partir de sa bifurcation. Clique le premier
+          puis le dernier coup à réviser dans chaque bloc. Hors fenêtre, rien
+          n'est dû ni compté dans la maîtrise — le progrès des cartes est
+          conservé si tu réélargis.
+        </p>
+
+        {segments.length === 0 ? (
+          <p className="text-sm italic text-meta">
+            Ce chapitre ne contient encore aucun coup.
+          </p>
+        ) : (
+          <div className="max-h-96 space-y-3 overflow-y-auto pr-1">
+            {segments.map((seg, segIdx) => {
+              const d = drafts[segIdx];
+              if (!d) return null;
+              const sans = sansBySegment[segIdx];
+              const drilled = userMovesIn(d);
+              const whole = d.start === seg.start && d.end === seg.end;
+              const empty = d.end <= d.start;
+              return (
+                <div
+                  key={`${seg.start}-${seg.moves[0]}-${segIdx}`}
+                  className="rounded-[10px] border border-line bg-surface p-3"
+                  style={{ marginLeft: seg.depth * 16 }}
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-semibold text-ink-soft">
+                      {seg.depth > 0 && (
+                        <span className="text-ink-muted">↳</span>
+                      )}
+                      <span className="truncate">{segLabel(segIdx)}</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2.5">
+                      <span className="text-[11.5px] text-meta tnum">
+                        {drilled > 0
+                          ? `${drilled} coup${drilled > 1 ? 's' : ''} à driller`
+                          : 'rien à driller'}
+                      </span>
+                      <button
+                        onClick={() => setWholeSegment(segIdx)}
+                        disabled={whole}
+                        className="text-[11.5px] font-semibold text-ink-muted transition hover:text-ink disabled:opacity-40"
+                      >
+                        Tout
+                      </button>
+                      <button
+                        onClick={() => setEmptySegment(segIdx)}
+                        disabled={empty}
+                        className="text-[11.5px] font-semibold text-ink-muted transition hover:text-ink disabled:opacity-40"
+                      >
+                        Aucun
+                      </button>
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-baseline gap-y-1.5">
+                    {seg.moves.map((uci, j) => {
+                      const ply = seg.start + j;
+                      const inRange = ply >= d.start && ply < d.end;
+                      return (
+                        <Fragment key={ply}>
+                          {(isWhitePly(ply) || j === 0) && (
+                            <span className="select-none pl-1.5 pr-1 text-[11.5px] text-ink-muted tnum">
+                              {plyLabel(ply)}
+                            </span>
+                          )}
+                          <button
+                            onClick={() => clickPly(segIdx, ply)}
+                            className={`rounded-md border px-1.5 py-0.5 text-[13.5px] transition ${
+                              inRange
+                                ? 'border-accent-soft-border bg-accent-soft font-semibold text-accent-soft-text'
+                                : 'border-transparent text-ink-muted hover:bg-track hover:text-ink'
+                            }`}
+                          >
+                            <FigurineSan san={sans[j] ?? uci} />
+                          </button>
+                        </Fragment>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <span
+            className={`text-[12.5px] tnum ${
+              totalDrilled > 0 ? 'text-meta' : 'font-semibold text-warning-text'
+            }`}
+          >
+            {totalDrilled} coup{totalDrilled > 1 ? 's' : ''} à driller dans ce
+            chapitre
+          </span>
+          <span className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="rounded-lg px-4 py-2 text-sm text-ink-soft hover:text-ink"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={submit}
+              className="btn-accent rounded-btn px-4 py-2 text-sm font-semibold"
+            >
+              Enregistrer
+            </button>
+          </span>
+        </div>
+      </div>
     </Modal>
   );
 }

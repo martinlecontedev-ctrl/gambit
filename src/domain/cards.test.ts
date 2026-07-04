@@ -63,6 +63,90 @@ describe('buildCards', () => {
   });
 });
 
+describe('buildCards with review windows', () => {
+  const line = opening.lines[0];
+
+  it('drops user moves whose ply falls outside the line windows', () => {
+    const o: Opening = {
+      ...opening,
+      lines: [{ ...line, reviewRanges: [{ start: 2, end: 3 }] }],
+    };
+    expect(buildCards(o, []).map(c => c.expectedUci)).toEqual(['g1f3']);
+  });
+
+  it('treats an absent end as open-ended', () => {
+    const o: Opening = {
+      ...opening,
+      lines: [{ ...line, reviewRanges: [{ start: 2 }] }],
+    };
+    expect(buildCards(o, []).map(c => c.expectedUci)).toEqual(['g1f3']);
+  });
+
+  it('supports non-contiguous coverage across segments', () => {
+    const o: Opening = {
+      ...opening,
+      lines: [{ ...line, reviewRanges: [{ start: 0, end: 1 }, { start: 2 }] }],
+    };
+    // Both e4 (ply 0) and Nf3 (ply 2) drilled, nothing in between.
+    expect(buildCards(o, []).map(c => c.expectedUci).sort()).toEqual([
+      'e2e4',
+      'g1f3',
+    ]);
+  });
+
+  it('drills nothing on an empty window list', () => {
+    const o: Opening = {
+      ...opening,
+      lines: [{ ...line, reviewRanges: [] }],
+    };
+    expect(buildCards(o, [])).toEqual([]);
+  });
+
+  it('keeps a shared prefix move as long as one covering line drills it', () => {
+    // Main line excludes ply 0; the variant (same prefix, diverging on
+    // black's reply) still covers it → union keeps e2e4.
+    const variant = {
+      id: 'l2',
+      name: 'var',
+      chapterId: CH,
+      parentLineId: 'l1',
+      moves: ['e2e4', 'c7c5', 'g1f3'],
+    };
+    const o: Opening = {
+      ...opening,
+      lines: [{ ...line, reviewRanges: [{ start: 2 }] }, variant],
+    };
+    const ucis = buildCards(o, []).map(c => c.expectedUci).sort();
+    expect(ucis).toContain('e2e4');
+  });
+
+  it('excludes a move only when every covering line excludes it', () => {
+    const variant = {
+      id: 'l2',
+      name: 'var',
+      chapterId: CH,
+      parentLineId: 'l1',
+      moves: ['e2e4', 'c7c5', 'g1f3'],
+      reviewRanges: [{ start: 2 }],
+    };
+    const o: Opening = {
+      ...opening,
+      lines: [{ ...line, reviewRanges: [{ start: 2 }] }, variant],
+    };
+    const ucis = buildCards(o, []).map(c => c.expectedUci);
+    expect(ucis).not.toContain('e2e4');
+    expect(ucis).toHaveLength(2); // Nf3 after 1...e5 and Nf3 after 1...c5
+  });
+
+  it('shrinks the mastery denominator along with the window', () => {
+    const o: Opening = {
+      ...opening,
+      lines: [{ ...line, reviewRanges: [{ start: 2 }] }],
+    };
+    expect(openingStats(o, [], 9_999_999_999_999).total).toBe(1);
+  });
+});
+
 describe('openingStats', () => {
   // Far future so that fresh cards built by `buildCards` (due = real Date.now())
   // always read as due, keeping the assertions deterministic.
