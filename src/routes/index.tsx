@@ -7,9 +7,14 @@ import {
   importLichessStudy,
   type ImportResult,
 } from '../domain/pgn';
-import { reviewsToday } from '../domain/activity';
+import {
+  activityByDay,
+  localDate,
+  reviewsToday,
+  streaks,
+} from '../domain/activity';
 import { openingStats, type OpeningStats } from '../domain/cards';
-import type { Card, Color, Folder, Opening } from '../domain/types';
+import type { Card, Color, Folder, Opening, ReviewEvent } from '../domain/types';
 import {
   cardsRepo,
   foldersRepo,
@@ -150,8 +155,9 @@ function Home() {
       </div>
 
       {openings.length > 0 && (
-        <div className="mb-7.5">
+        <div className="mb-7.5 space-y-5">
           <ReviewBanner totalDue={totalDue} done={done} dueOpenings={dueOpenings} />
+          <ActivityCard reviews={reviews} now={now} />
         </div>
       )}
 
@@ -274,6 +280,191 @@ function ReviewBanner({
           {done} faite{done > 1 ? 's' : ''} · {totalDue} restante
           {totalDue > 1 ? 's' : ''}
         </span>
+      </div>
+    </div>
+  );
+}
+
+/** One heat cell per day; `null` marks the future days of the current week so
+ * the last grid column keeps its 7-row shape. */
+type HeatDay = { key: string; date: Date } | null;
+
+const HEAT_WEEKS = 52;
+const HEAT_CELL = 13;
+const HEAT_GAP = 3;
+const HEAT_PITCH = HEAT_CELL + HEAT_GAP;
+
+/** Cell backgrounds mix the live accent into the surface, so the heatmap
+ * follows the `data-accent` palette like every other accent surface. */
+const HEAT_BG = [
+  'var(--color-track)',
+  'color-mix(in srgb, var(--accent) 22%, var(--color-surface))',
+  'color-mix(in srgb, var(--accent) 45%, var(--color-surface))',
+  'color-mix(in srgb, var(--accent) 70%, var(--color-surface))',
+  'var(--accent)',
+];
+
+const heatLevel = (n: number): number =>
+  n === 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 20 ? 3 : 4;
+
+/** The last `HEAT_WEEKS` calendar weeks (Monday-first), oldest column first,
+ * the current week last. Date arithmetic goes through `setDate` so DST
+ * transitions can't skip a day. */
+function buildHeatWeeks(now: number): HeatDay[][] {
+  const monday = new Date(now);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const weeks: HeatDay[][] = [];
+  for (let w = HEAT_WEEKS - 1; w >= 0; w--) {
+    const week: HeatDay[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(d.getDate() - w * 7 + i);
+      week.push(d.getTime() > now ? null : { key: localDate(d.getTime()), date: d });
+    }
+    weeks.push(week);
+  }
+  return weeks;
+}
+
+const MONTH_FMT = new Intl.DateTimeFormat('fr-FR', { month: 'short' });
+const DAY_FMT = new Intl.DateTimeFormat('fr-FR', {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'long',
+});
+
+function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number }) {
+  const byDay = useMemo(() => activityByDay(reviews), [reviews]);
+  const streak = useMemo(() => streaks(reviews, now), [reviews, now]);
+  const weeks = useMemo(() => buildHeatWeeks(now), [now]);
+
+  const yearTotal = useMemo(() => {
+    let s = 0;
+    for (const v of byDay.values()) s += v;
+    return s;
+  }, [byDay]);
+
+  // A month label sits on the first column whose Monday enters a new month.
+  const monthLabels = useMemo(
+    () =>
+      weeks.map((week, i) => {
+        const cur = week[0];
+        const prev = i > 0 ? weeks[i - 1][0] : null;
+        if (!cur || !prev) return '';
+        return cur.date.getMonth() !== prev.date.getMonth()
+          ? MONTH_FMT.format(cur.date)
+          : '';
+      }),
+    [weeks],
+  );
+
+  return (
+    <div className="flex items-stretch gap-8 rounded-[18px] border border-line bg-surface px-6 py-5.5 shadow-card">
+      <div className="w-64 shrink-0 border-r border-line pr-8">
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
+          Série
+        </div>
+        <div className="mt-2.5 flex items-baseline gap-2.5">
+          <span
+            className={`text-[54px] font-extrabold leading-[0.9] tracking-[-0.03em] tnum ${
+              streak.current > 0 ? 'text-accent' : 'text-ink-muted'
+            }`}
+          >
+            {streak.current}
+          </span>
+          <span className="text-lg font-bold leading-tight">
+            jour{streak.current > 1 ? 's' : ''} d'affilée
+          </span>
+        </div>
+        <div className="mt-3.5">
+          {streak.todayDone ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-success-border bg-success-soft px-2.75 py-1.25 text-[12.5px] font-semibold text-success">
+              ✓ Validée aujourd'hui
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-warning-border bg-warning-soft px-2.75 py-1.25 text-[12.5px] font-semibold text-warning-text">
+              {streak.current > 0
+                ? "Révise aujourd'hui pour la garder"
+                : 'Révise une position pour la lancer'}
+            </span>
+          )}
+        </div>
+        <div className="mt-4 space-y-1 text-[12.5px] text-meta">
+          <p>
+            Record :{' '}
+            <span className="font-bold text-ink-soft tnum">{streak.best}</span> jour
+            {streak.best > 1 ? 's' : ''}
+          </p>
+          <p>
+            <span className="font-bold text-ink-soft tnum">{yearTotal}</span> révision
+            {yearTotal > 1 ? 's' : ''} sur 12 mois
+          </p>
+        </div>
+      </div>
+
+      <div className="min-w-0 flex-1 overflow-x-auto">
+        <div
+          className="mb-1.5 grid text-[10px] leading-none text-ink-muted"
+          style={{
+            gridTemplateColumns: `repeat(${weeks.length}, ${HEAT_PITCH}px)`,
+            marginLeft: 30,
+          }}
+        >
+          {monthLabels.map((m, i) => (
+            <span key={i} className="overflow-visible whitespace-nowrap">
+              {m}
+            </span>
+          ))}
+        </div>
+        <div className="flex">
+          <div
+            className="grid w-[30px] shrink-0 text-[10px] leading-[13px] text-ink-muted"
+            style={{ gridTemplateRows: `repeat(7, ${HEAT_PITCH}px)` }}
+          >
+            <span style={{ gridRow: 1 }}>Lun</span>
+            <span style={{ gridRow: 3 }}>Mer</span>
+            <span style={{ gridRow: 5 }}>Ven</span>
+          </div>
+          <div
+            className="grid grid-flow-col"
+            style={{
+              gridTemplateRows: `repeat(7, ${HEAT_CELL}px)`,
+              gridAutoColumns: `${HEAT_CELL}px`,
+              gap: HEAT_GAP,
+            }}
+          >
+            {weeks.flatMap((week, wi) =>
+              week.map((day, di) => {
+                if (!day) return <span key={`${wi}-${di}`} />;
+                const count = byDay.get(day.key) ?? 0;
+                return (
+                  <span
+                    key={`${wi}-${di}`}
+                    title={`${
+                      count > 0
+                        ? `${count} révision${count > 1 ? 's' : ''}`
+                        : 'Aucune révision'
+                    } · ${DAY_FMT.format(day.date)}`}
+                    className="rounded-[3px]"
+                    style={{ background: HEAT_BG[heatLevel(count)] }}
+                  />
+                );
+              }),
+            )}
+          </div>
+        </div>
+        <div className="mt-2.5 flex items-center justify-end gap-1.5 text-[10.5px] text-ink-muted">
+          <span className="mr-0.5">Moins</span>
+          {HEAT_BG.map((bg, i) => (
+            <span
+              key={i}
+              className="h-[10px] w-[10px] rounded-[3px]"
+              style={{ background: bg }}
+            />
+          ))}
+          <span className="ml-0.5">Plus</span>
+        </div>
       </div>
     </div>
   );
@@ -599,7 +790,7 @@ function OpeningCard({
           }}
           title="Supprimer cette ouverture"
           aria-label="Supprimer cette ouverture"
-          className="rounded p-1 text-lg leading-none text-[#b3b0a4] transition hover:bg-danger-soft hover:text-danger"
+          className="rounded p-1 text-lg leading-none text-ink-muted transition hover:bg-danger-soft hover:text-danger"
         >
           ✕
         </button>
