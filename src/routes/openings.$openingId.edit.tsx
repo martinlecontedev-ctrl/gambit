@@ -468,12 +468,24 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
       const isWhite = turnColor(chess) === 'white';
       const san = uciToSanAt(currentFen, uci);
       const moveLabel = isWhite ? `${moveNum}. ${san}` : `${moveNum}... ${san}`;
-      const stem =
-        recognizedOpening?.name ??
-        latest.chapters.find(c => c.id === latestLine.chapterId)?.name ??
-        '';
-      const defaultName = stem ? `${stem} ${moveLabel}` : moveLabel;
-      setChapterModal({ seedMoves: [...prefix, uci], defaultName });
+      const fallbackStem =
+        latest.chapters.find(c => c.id === latestLine.chapterId)?.name ?? '';
+      const seedMoves = [...prefix, uci];
+      // Resolve the ECO name at the divergence position HERE instead of
+      // reading `recognizedOpening`: this handler lives in the chessground
+      // config closure, which doesn't rebuild when the recognition state
+      // lands — reading it would suggest the name of a stale position. The
+      // dataset chunk is already loaded (the recognition effect ran on
+      // mount), so the modal still opens instantly.
+      void recognizeOpening(seedMoves, prefix.length, chapterStartFen).then(
+        found => {
+          const stem = found?.name ?? fallbackStem;
+          setChapterModal({
+            seedMoves,
+            defaultName: stem ? `${stem} ${moveLabel}` : moveLabel,
+          });
+        },
+      );
       return;
     }
 
@@ -970,13 +982,6 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
   );
 }
 
-/**
- * Vertical white-vs-black bar à la chess.com / lichess. White fills from the
- * bottom; the boundary moves smoothly as the engine eval changes. Keeps the
- * last known share when navigating to a position the engine hasn't analyzed
- * yet, so the bar slides directly from old → new instead of snapping through
- * neutral.
- */
 function ChapterItem({
   chapter,
   active,
@@ -1126,6 +1131,13 @@ function ChapterNameModal({
   );
 }
 
+/**
+ * Vertical white-vs-black bar à la chess.com / lichess. White fills from the
+ * bottom; the boundary moves smoothly as the engine eval changes. Keeps the
+ * last known share when navigating to a position the engine hasn't analyzed
+ * yet, so the bar slides directly from old → new instead of snapping through
+ * neutral.
+ */
 function EvalBar({
   result,
   currentFen,
@@ -1289,8 +1301,8 @@ function ExportPgnModal({
     <Modal open onClose={onClose} title="Exporter en PGN">
       <div className="space-y-3">
         <p className="text-xs text-meta">
-          Compatible Lichess Study, ChessBase, Chessable. Inclut variantes,
-          commentaires, NAGs et flèches.
+          Compatible Lichess Study, ChessBase, Chessable. Un chapitre = une
+          partie PGN. Inclut variantes, commentaires, NAGs et flèches.
         </p>
         <textarea
           readOnly

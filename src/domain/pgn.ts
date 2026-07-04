@@ -46,26 +46,49 @@ const shapeColorToBrush: Record<CommentShapeColor, ArrowBrush> = {
   yellow: 'yellow',
 };
 
-/** Build a PGN string from a Gambit opening. Variations and annotations
- * (comments, NAGs, `[%cal ...]` arrows) are emitted in standard PGN format,
- * so the output round-trips through Lichess Study, ChessBase, etc. */
+/** Build a PGN string from a Gambit opening — one game per chapter, the same
+ * multi-game shape Lichess studies use (`[Event "Opening: Chapter"]`, plus
+ * `[FEN]`/`[SetUp]` headers when the chapter starts past the initial
+ * position). Variations and annotations (comments, NAGs, `[%cal ...]`
+ * arrows) are emitted in standard PGN format, so the output round-trips
+ * through Lichess Study, ChessBase, etc. */
 export function exportToPgn(opening: Opening): string {
-  const rootLine = opening.lines.find(l => !effectiveParentId(opening.lines, l));
-  if (!rootLine) return '';
+  const chapters = [...opening.chapters].sort((a, b) => a.order - b.order);
+  const games: string[] = [];
+  for (const chapter of chapters) {
+    const chapterLines = opening.lines.filter(l => l.chapterId === chapter.id);
+    const rootLine = chapterLines.find(l => !effectiveParentId(chapterLines, l));
+    if (!rootLine || rootLine.moves.length === 0) continue;
 
-  const game = defaultGame<PgnNodeData>();
-  game.headers.set('Event', opening.name);
-  game.headers.set('White', opening.color === 'white' ? 'Gambit' : '?');
-  game.headers.set('Black', opening.color === 'black' ? 'Gambit' : '?');
-  game.headers.set('Result', '*');
+    const game = defaultGame<PgnNodeData>();
+    game.headers.set(
+      'Event',
+      chapters.length > 1 ? `${opening.name}: ${chapter.name}` : opening.name,
+    );
+    game.headers.set('White', opening.color === 'white' ? 'Gambit' : '?');
+    game.headers.set('Black', opening.color === 'black' ? 'Gambit' : '?');
+    game.headers.set('Result', '*');
+    if (chapter.startFen) {
+      game.headers.set('FEN', chapter.startFen);
+      game.headers.set('SetUp', '1');
+    }
 
-  emitLine(opening, rootLine, 0, chessFromFen(START_FEN), game.moves);
-
-  return makePgn(game);
+    emitLine(
+      opening,
+      chapterLines,
+      rootLine,
+      0,
+      chessFromFen(chapter.startFen ?? START_FEN),
+      game.moves,
+    );
+    games.push(makePgn(game));
+  }
+  return games.join('\n');
 }
 
 function emitLine(
   opening: Opening,
+  chapterLines: Line[],
   line: Line,
   fromPosition: number,
   chess: Chess,
@@ -87,13 +110,13 @@ function emitLine(
 
     // Direct child variants of `line` that diverge exactly here (their first
     // own move is at position i) are emitted as siblings of `mainNode`.
-    const variants = opening.lines.filter(
+    const variants = chapterLines.filter(
       v =>
-        effectiveParentId(opening.lines, v) === line.id &&
+        effectiveParentId(chapterLines, v) === line.id &&
         commonPrefixLength(v.moves, line.moves) === i,
     );
     for (const variant of variants) {
-      emitLine(opening, variant, i, preMove.clone(), currentParent);
+      emitLine(opening, chapterLines, variant, i, preMove.clone(), currentParent);
     }
 
     currentParent = mainNode;

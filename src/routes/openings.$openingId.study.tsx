@@ -156,8 +156,13 @@ function StudyImpl({
       '',
   );
 
+  // Frozen at mount: grading the session's last card drops totalDue to 0, and
+  // that must NOT yank the running session away — ReviewSession's own end
+  // screen (session stats, next chapter / next opening links) handles it.
+  const [hadDueAtMount] = useState(() => totalDue > 0);
+
   if (!opening) return <NotFound />;
-  if (totalDue === 0) return <NothingDue openingId={opening.id} />;
+  if (!hadDueAtMount) return <NothingDue openingId={opening.id} />;
 
   const activeChapterId =
     sortedChapters.find(c => c.id === selectedChapterId)?.id ??

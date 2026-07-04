@@ -4,9 +4,11 @@ export const Route = createFileRoute('/guide')({ component: Guide });
 
 const TOC = [
   { id: 'g-var', label: 'Variantes' },
+  { id: 'g-chap', label: 'Chapitres' },
   { id: 'g-arrows', label: 'Flèches' },
   { id: 'g-nag', label: 'Glyphes NAG' },
   { id: 'g-trans', label: 'Transpositions' },
+  { id: 'g-engine', label: 'Moteur' },
   { id: 'g-study', label: 'Étude' },
   { id: 'g-folders', label: 'Dossiers' },
   { id: 'g-io', label: 'Import / Export' },
@@ -43,7 +45,8 @@ function Guide() {
           <Section id="g-var" title="Variantes">
             <Item>
               Une variante se crée <em>uniquement</em> en jouant un coup divergent
-              depuis l'échiquier. Pas de bouton dédié.
+              depuis l'échiquier — sur un coup de l'<strong>adversaire</strong>.
+              Pas de bouton dédié.
             </Item>
             <Item>
               Si tu joues un coup à un endroit où une ligne soeur existe déjà, tu
@@ -56,6 +59,23 @@ function Guide() {
             </Item>
           </Section>
 
+          <Section id="g-chap" title="Chapitres">
+            <Item>
+              Un coup divergent sur <strong>ta couleur</strong> crée un nouveau
+              chapitre (nom suggéré depuis l'ouverture ECO reconnue) : deux choix
+              de répertoire pour la même position ne peuvent pas cohabiter dans
+              un même chapitre sans contredire la révision.
+            </Item>
+            <Item>
+              Chaque chapitre est drillé séparément : ses cartes de révision lui
+              appartiennent, même si une position apparaît aussi ailleurs.
+            </Item>
+            <Item>
+              Import d'une étude Lichess : un chapitre d'étude = un chapitre
+              Gambit, position de départ personnalisée comprise.
+            </Item>
+          </Section>
+
           <Section id="g-arrows" title="Flèches sur l'échiquier">
             <Item>
               <strong>Clic-droit-glisser</strong> pour tracer une flèche d'une
@@ -63,16 +83,16 @@ function Guide() {
             </Item>
             <Item>
               <span className="flex flex-wrap gap-2.5">
-                <ModPill tone="success" dot="#5E9457">
+                <ModPill tone="success" dot="#15781B">
                   défaut · vert
                 </ModPill>
-                <ModPill tone="danger" dot="#BE5240">
+                <ModPill tone="danger" dot="#882020">
                   Shift · rouge
                 </ModPill>
-                <ModPill tone="info" dot="#4F6E8F">
+                <ModPill tone="info" dot="#003088">
                   Alt · bleu
                 </ModPill>
-                <ModPill tone="warning" dot="#CE9A2F">
+                <ModPill tone="warning" dot="#e68f00">
                   Shift+Alt · jaune
                 </ModPill>
               </span>
@@ -104,9 +124,22 @@ function Guide() {
               trait, roque, en passant), pas par l'ordre des coups qui y a mené.
             </Item>
             <Item>
-              Conséquence : annotations <strong>et</strong> cartes de révision
-              sont partagées entre toutes les lignes qui mènent à la même
-              position. Tu annotes une fois, tu retrouves la note partout.
+              Conséquence : les annotations sont partagées entre toutes les
+              lignes qui mènent à la même position. Les cartes de révision le
+              sont aussi, mais <em>au sein d'un même chapitre</em> — deux
+              chapitres gardent des cartes distinctes pour la même position.
+            </Item>
+          </Section>
+
+          <Section id="g-engine" title="Moteur (Stockfish)">
+            <Item>
+              Le bouton <Kbd>Engine</Kbd> dans l'éditeur active Stockfish :
+              barre d'évaluation à gauche du plateau, score chiffré, et flèches
+              suggérées (bleu pâle = meilleur coup, gris = alternatives).
+            </Item>
+            <Item>
+              Le réglage persiste d'une session à l'autre. Le moteur tourne en
+              local (WebAssembly), rien ne sort du navigateur.
             </Item>
           </Section>
 
@@ -114,6 +147,15 @@ function Guide() {
             <Item>
               Joue le coup attendu à la souris. Si correct, évalue ton rappel
               (Difficile · Bien · Facile). Si raté, la carte revient dans 1 jour.
+            </Item>
+            <Item>
+              <Kbd>Révéler</Kbd> compte comme un oubli : même effet SRS qu'une
+              erreur, mais tracé à part dans les compteurs de session.
+            </Item>
+            <Item>
+              La révision se fait chapitre par chapitre. Depuis la bannière de la
+              home, <Kbd>Démarrer la révision</Kbd> enchaîne toutes les
+              ouvertures qui ont des cartes dues.
             </Item>
             <Item>
               Après réponse, le commentaire et les flèches associés à la position
@@ -156,8 +198,9 @@ function Guide() {
             </Item>
             <Item>
               Bouton <Kbd>Exporter</Kbd> dans l'éditeur : copie le PGN de
-              l'ouverture courante avec variantes, commentaires, NAGs et flèches.
-              Compatible Lichess Study, ChessBase et tout autre lecteur PGN.
+              l'ouverture courante — une partie par chapitre — avec variantes,
+              commentaires, NAGs et flèches. Compatible Lichess Study, ChessBase
+              et tout autre lecteur PGN.
             </Item>
           </Section>
         </div>

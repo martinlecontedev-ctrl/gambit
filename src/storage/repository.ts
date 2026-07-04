@@ -70,7 +70,14 @@ function read<T>(key: string, fallback: T): T {
 
 function readOpenings(): Opening[] {
   if (cachedOpenings === null) {
-    cachedOpenings = read<Opening[]>(KEY_OPENINGS, []).map(migrateOpening);
+    const raw = read<Opening[]>(KEY_OPENINGS, []);
+    cachedOpenings = raw.map(migrateOpening);
+    // Persist migrations right away: migrateOpening mints fresh chapter ids,
+    // and minting different ids on the next session would orphan every card
+    // keyed on them (the chapterId is part of the card's composite id).
+    if (cachedOpenings.some((o, i) => o !== raw[i])) {
+      localStorage.setItem(KEY_OPENINGS, JSON.stringify(cachedOpenings));
+    }
   }
   return cachedOpenings;
 }
