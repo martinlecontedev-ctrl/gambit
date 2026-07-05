@@ -1,8 +1,8 @@
 import { Chess } from 'chessops/chess';
 import { parseFen, makeFen, INITIAL_FEN } from 'chessops/fen';
 import { chessgroundDests } from 'chessops/compat';
-import { makeSquare, parseUci, parseSquare } from 'chessops/util';
-import { makeSanAndPlay } from 'chessops/san';
+import { makeSquare, makeUci, parseUci, parseSquare } from 'chessops/util';
+import { makeSanAndPlay, parseSan } from 'chessops/san';
 import type { Key, Dests } from '@lichess-org/chessground/types';
 
 export const START_FEN = INITIAL_FEN;
@@ -110,12 +110,38 @@ export function lineToSan(
   return out;
 }
 
+/**
+ * Parse a SAN sequence (e.g. a real game's moves) into UCIs, stopping at the
+ * first unparsable move or at `maxPlies`. Castling comes out in chessops'
+ * king-on-rook form — compare through `sameMove`, not `===`.
+ */
+export function sansToUcis(
+  sans: string[],
+  startFen: string = START_FEN,
+  maxPlies = Infinity,
+): string[] {
+  const c = chessFromFen(startFen);
+  const out: string[] = [];
+  for (const san of sans) {
+    if (out.length >= maxPlies) break;
+    const m = parseSan(c, san);
+    if (!m) break;
+    out.push(makeUci(m));
+    c.play(m);
+  }
+  return out;
+}
+
 export function uciToSanAt(fen: string, uci: string): string {
   const chess = chessFromFen(fen);
   const m = parseUci(uci);
   if (!m) return uci;
   return makeSanAndPlay(chess, m);
 }
+
+/** `3.` / `3…` label of the move played at `ply` (standard-start games). */
+export const moveNumberLabel = (ply: number): string =>
+  `${Math.floor(ply / 2) + 1}${ply % 2 === 0 ? '.' : '…'}`;
 
 /**
  * Canonical key for a chess position, ignoring move counters. Keeps the

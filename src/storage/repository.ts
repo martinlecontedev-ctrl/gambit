@@ -1,4 +1,4 @@
-import type { Card, Folder, Opening, ReviewEvent } from '../domain/types';
+import type { Card, Folder, Opening, ReviewEvent, StudySync } from '../domain/types';
 
 /**
  * Bring an opening up to the current shape. Openings stored before the
@@ -30,6 +30,7 @@ const KEY_OPENINGS = 'gambit.openings';
 const KEY_CARDS = 'gambit.cards';
 const KEY_FOLDERS = 'gambit.folders';
 const KEY_REVIEWS = 'gambit.reviews';
+const KEY_STUDY_SYNC = 'gambit.lichess.studySync';
 
 /** Keep review history bounded: events older than a year are dropped on write.
  * Enough for "done today", the login streak, and a year-long heatmap, while
@@ -40,6 +41,7 @@ let cachedOpenings: Opening[] | null = null;
 let cachedCards: Card[] | null = null;
 let cachedFolders: Folder[] | null = null;
 let cachedReviews: ReviewEvent[] | null = null;
+let cachedStudySync: Record<string, StudySync> | null = null;
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -56,6 +58,7 @@ function invalidate() {
   cachedCards = null;
   cachedFolders = null;
   cachedReviews = null;
+  cachedStudySync = null;
   listeners.forEach(l => l());
 }
 
@@ -148,6 +151,24 @@ export const reviewsRepo = {
     const kept = readReviews().filter(r => r.ts >= cutoff);
     kept.push(event);
     localStorage.setItem(KEY_REVIEWS, JSON.stringify(kept));
+    invalidate();
+  },
+};
+
+function readStudySync(): Record<string, StudySync> {
+  if (cachedStudySync === null) {
+    cachedStudySync = read<Record<string, StudySync>>(KEY_STUDY_SYNC, {});
+  }
+  return cachedStudySync;
+}
+
+/** Opening → Lichess mirror-study mapping (push-only sync). */
+export const studySyncRepo = {
+  all: readStudySync,
+  get: (openingId: string): StudySync | undefined => readStudySync()[openingId],
+  set: (openingId: string, sync: StudySync): void => {
+    const all = { ...readStudySync(), [openingId]: sync };
+    localStorage.setItem(KEY_STUDY_SYNC, JSON.stringify(all));
     invalidate();
   },
 };

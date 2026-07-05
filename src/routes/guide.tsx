@@ -9,6 +9,8 @@ const TOC = [
   { id: 'g-nag', label: 'Glyphes NAG' },
   { id: 'g-trans', label: 'Transpositions' },
   { id: 'g-engine', label: 'Moteur' },
+  { id: 'g-explorer', label: 'Explorateur' },
+  { id: 'g-lichess', label: 'Compte Lichess' },
   { id: 'g-study', label: 'Étude' },
   { id: 'g-folders', label: 'Dossiers' },
   { id: 'g-io', label: 'Import / Export' },
@@ -140,6 +142,87 @@ function Guide() {
             <Item>
               Le réglage persiste d'une session à l'autre. Le moteur tourne en
               local (WebAssembly), rien ne sort du navigateur.
+            </Item>
+          </Section>
+
+          <Section id="g-explorer" title="Explorateur d'ouvertures">
+            <Item>
+              Panneau <Kbd>Explorateur</Kbd> dans l'éditeur : pour la position
+              affichée, les coups les plus joués avec leur part de parties et la
+              barre victoires blancs / nulles / victoires noirs. Deux bases :
+              parties Lichess (1800+, blitz à classique) ou parties de maîtres.
+            </Item>
+            <Item>
+              Cliquer un coup le joue sur l'échiquier — mêmes règles que
+              d'habitude (bascule, variante ou nouveau chapitre selon le cas).
+            </Item>
+            <Item>
+              Opt-in : tant que le panneau est <Kbd>OFF</Kbd>, aucune requête ne
+              part vers Lichess. Les positions déjà consultées sont mises en
+              cache pour la session.
+            </Item>
+            <Item>
+              L'explorateur passe par ton <strong>compte Lichess connecté</strong>{' '}
+              (onglet LICHESS, ou bouton dans le panneau) — gratuit, aucun scope
+              demandé. Tout reste stocké en local.
+            </Item>
+          </Section>
+
+          <Section id="g-lichess" title="Compte Lichess">
+            <Item>
+              Onglet <Kbd>LICHESS</Kbd> dans la barre du haut :{' '}
+              <Kbd>Connecter Lichess</Kbd> lance l'OAuth officiel (PKCE), sans
+              mot de passe partagé — tu autorises Gambit depuis Lichess, aucun
+              scope demandé. <Kbd>Déconnecter</Kbd> pour révoquer côté app.
+            </Item>
+            <Item>
+              Une fois connecté : tes <strong>parties récentes</strong> sont
+              comparées à ton répertoire. Une déviation n'est signalée qu'à
+              partir du <strong>4ᵉ coup</strong>, et pour tes propres coups,
+              seulement s'il s'agit d'un coup <strong>rare</strong> (moins de
+              10 % dans la base Lichess) — un coup populaire, c'est une autre
+              ouverture assumée, pas un raté. Clique l'étiquette pour déplier
+              la <strong>position de bifurcation</strong> : coup joué en rouge,
+              répertoire en vert.
+            </Item>
+            <Item>
+              Si <em>tu</em> as dévié : <Kbd>Réviser ce coup</Kbd> lance une
+              session exercice sur cette seule position (même hors échéance et
+              hors fenêtre de révision). Si l'<em>adversaire</em> est sorti de ta
+              théorie : <Kbd>Ajouter au répertoire</Kbd> crée la variante avec
+              son coup et t'ouvre l'éditeur dessus, prêt pour ta réponse —
+              proposé à partir du <strong>5ᵉ coup</strong>.
+            </Item>
+            <Item>
+              <Kbd>↗</Kbd> ouvre la partie sur Lichess, directement à la
+              position de sortie de théorie. L'explorateur utilise aussi cette
+              session — plus de jeton à coller.
+            </Item>
+            <Item>
+              <strong>Ouvertures jouées</strong> : tes parties regroupées par
+              famille d'ouverture (blancs / noirs), avec score V-N-D et
+              l'ouverture préférée. Celles que ton répertoire ne couvre pas
+              proposent <Kbd>Créer un répertoire</Kbd>, pré-rempli avec les
+              coups que tu joues réellement — et du même coup, le Coach cesse
+              de compter ces parties comme des « ratés » de ton autre théorie.
+            </Item>
+            <Item>
+              Dans l'<strong>éditeur</strong>, le bloc <strong>Fidélité au
+              répertoire</strong> juge par comportement : chaque partie n'est
+              comptée que pour l'ouverture qu'elle a suivie le plus
+              profondément, et chaque coup manqué est lu contre ta propre
+              régularité — « joué ♗b5 2× sur 7 passages » = trou de mémoire à
+              réviser ; « tu joues d4 systématiquement » = désaccord
+              répertoire/pratique, à toi de trancher. Chaque point de fuite a
+              son bouton <Kbd>Réviser</Kbd>.
+            </Item>
+            <Item>
+              <strong>Sauvegarde du répertoire</strong> : chaque ouverture peut
+              être poussée vers une étude <em>privée</em> de ton compte (créée
+              automatiquement, un chapitre Gambit = un chapitre d'étude).
+              Sens unique — Gambit n'écrit que dans ses propres études, ne lit
+              rien d'autre. L'état SRS reste local. Nécessite la permission
+              d'écriture d'études (demandée à la connexion).
             </Item>
           </Section>
 

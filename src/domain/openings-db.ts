@@ -28,11 +28,17 @@ function load(): Promise<Index> {
   return loading;
 }
 
+export type OpeningMatch = Opening & {
+  /** Ply (0 = starting position) at which this entry matched. */
+  ply: number;
+};
+
 /**
- * Walks the line ply-by-ply up to (and including) `upTo` and returns the
- * deepest opening name reached — matching the chess.com / lichess behaviour
- * during analysis. Returns `null` if no position along the way is in the
- * dataset (e.g. the user is in a novelty past the known theory).
+ * Walks the line ply-by-ply up to (and including) `upTo` and returns EVERY
+ * dataset entry encountered along the way, shallowest first. The last one is
+ * the deepest name (what analysis boards display); the earlier ones let a
+ * caller reason about the opening *family* (e.g. the first "Italian Game"
+ * hit, before variation suffixes pile up).
  *
  * `startFen` defaults to the standard initial position. Lichess study
  * chapters that begin past the opening pass their `chapter.startFen` here
@@ -40,19 +46,32 @@ function load(): Promise<Index> {
  * `applyUci` would replay illegal moves from the wrong starting position
  * and the recognizer would never match a dataset entry.
  */
+export async function recognizeOpeningMatches(
+  uciMoves: string[],
+  upTo: number,
+  startFen: string = START_FEN,
+): Promise<OpeningMatch[]> {
+  const db = await load();
+  let chess = chessFromFen(startFen);
+  const matches: OpeningMatch[] = [];
+  const start = db[positionKey(fenOf(chess))];
+  if (start) matches.push({ ...start, ply: 0 });
+  const plies = Math.min(upTo, uciMoves.length);
+  for (let i = 0; i < plies; i++) {
+    chess = applyUci(chess, uciMoves[i]);
+    const match = db[positionKey(fenOf(chess))];
+    if (match) matches.push({ ...match, ply: i + 1 });
+  }
+  return matches;
+}
+
+/** Deepest opening name reached — the chess.com / lichess analysis label. */
 export async function recognizeOpening(
   uciMoves: string[],
   upTo: number,
   startFen: string = START_FEN,
 ): Promise<Opening | null> {
-  const db = await load();
-  let chess = chessFromFen(startFen);
-  let best: Opening | null = db[positionKey(fenOf(chess))] ?? null;
-  const plies = Math.min(upTo, uciMoves.length);
-  for (let i = 0; i < plies; i++) {
-    chess = applyUci(chess, uciMoves[i]);
-    const match = db[positionKey(fenOf(chess))];
-    if (match) best = match;
-  }
-  return best;
+  const matches = await recognizeOpeningMatches(uciMoves, upTo, startFen);
+  const last = matches[matches.length - 1];
+  return last ? { eco: last.eco, name: last.name } : null;
 }

@@ -31,20 +31,23 @@ type OpeningFileItem = { id: string; name: string; due: number };
  * (graded 0, same SRS effect as a wrong move) but tallied on its own. */
 type ReviewOutcome = 'pass' | 'fail' | 'revealed';
 
-type StudySearch = { program: boolean };
+type StudySearch = { program: boolean; pos?: string };
 
 export const Route = createFileRoute('/openings/$openingId/study')({
   component: Study,
   // `program` = launched from the home banner: review every due opening, not
   // just this one. Drives the opening queue shown on top.
+  // `pos` = exercise mode (deep link from the Lichess deviations tab): drill
+  // only the cards of that position key, due or not.
   validateSearch: (search: Record<string, unknown>): StudySearch => ({
     program: search.program === true || search.program === 'true',
+    pos: typeof search.pos === 'string' && search.pos ? search.pos : undefined,
   }),
 });
 
 function Study() {
   const { openingId } = Route.useParams();
-  const { program } = Route.useSearch();
+  const { program, pos } = Route.useSearch();
   const opening = useStored(() => openingsRepo.get(openingId));
   const openings = useStored(() => openingsRepo.list());
   const allCards = useStored(() => cardsRepo.list());
@@ -91,6 +94,7 @@ function Study() {
       key={openingId}
       opening={opening}
       storedCards={storedCards}
+      exercisePos={pos}
       openingsFile={openingsFile}
       nextOpening={nextOpening}
       stats={stats}
@@ -102,6 +106,7 @@ function Study() {
 function StudyImpl({
   opening,
   storedCards,
+  exercisePos,
   openingsFile,
   nextOpening,
   stats,
@@ -109,6 +114,7 @@ function StudyImpl({
 }: {
   opening: Opening | undefined;
   storedCards: Card[];
+  exercisePos: string | undefined;
   openingsFile: OpeningFileItem[] | undefined;
   nextOpening: OpeningFileItem | undefined;
   stats: { pass: number; fail: number; revealed: number };
@@ -117,6 +123,20 @@ function StudyImpl({
   // Frozen at mount so due status (and the per-chapter counts) stay stable as
   // cards get rescheduled during the session.
   const now = useMemo(() => Date.now(), []);
+
+  // Exercise mode: drill the exact cards of one position, due or not, review
+  // windows bypassed — a move missed in a real game deserves a rep even if
+  // it was windowed out of the daily drill.
+  const exerciseQueue = useMemo(() => {
+    if (!exercisePos || !opening) return undefined;
+    const unwindowed = {
+      ...opening,
+      lines: opening.lines.map(l => ({ ...l, reviewRanges: undefined })),
+    };
+    return buildCards(unwindowed, storedCards, now).filter(
+      c => positionKey(c.fen) === exercisePos,
+    );
+  }, [exercisePos, opening, storedCards, now]);
 
   // Review is scoped to one chapter at a time. Group the due cards by chapter
   // so the rail can show per-chapter counts and the session can drill them
@@ -146,11 +166,13 @@ function StudyImpl({
     return s;
   }, [dueByChapter]);
 
-  // First chapter with due cards — the session starts here. Frozen on mount so
-  // the active chapter doesn't silently jump as counts change; advancing is an
-  // explicit user choice (rail click or the "next chapter" button).
+  // First chapter with due cards — the session starts here (the exercised
+  // card's chapter in exercise mode). Frozen on mount so the active chapter
+  // doesn't silently jump as counts change; advancing is an explicit user
+  // choice (rail click or the "next chapter" button).
   const [selectedChapterId, setSelectedChapterId] = useState<string>(
     () =>
+      exerciseQueue?.[0]?.chapterId ??
       sortedChapters.find(c => (dueByChapter.get(c.id)?.length ?? 0) > 0)?.id ??
       sortedChapters[0]?.id ??
       '',
@@ -159,7 +181,17 @@ function StudyImpl({
   // Frozen at mount: grading the session's last card drops totalDue to 0, and
   // that must NOT yank the running session away — ReviewSession's own end
   // screen (session stats, next chapter / next opening links) handles it.
-  const [hadDueAtMount] = useState(() => totalDue > 0);
+  const [hadDueAtMount] = useState(() =>
+    exerciseQueue ? exerciseQueue.length > 0 : totalDue > 0,
+  );
+
+  // The exercise queue is frozen at mount (post-grade recomputes must not
+  // reshuffle it) and consumed once: switching chapter mid-exercise falls
+  // back to the regular due queue of the clicked chapter.
+  const [initialExercise] = useState(exerciseQueue);
+  const [exerciseActive, setExerciseActive] = useState(
+    () => (exerciseQueue?.length ?? 0) > 0,
+  );
 
   if (!opening) return <NotFound />;
   if (!hadDueAtMount) return <NothingDue openingId={opening.id} />;
@@ -176,8 +208,15 @@ function StudyImpl({
       chapters={sortedChapters}
       dueByChapter={dueByChapter}
       activeChapterId={activeChapterId}
-      onSelectChapter={setSelectedChapterId}
-      initialQueue={dueByChapter.get(activeChapterId) ?? []}
+      onSelectChapter={id => {
+        setExerciseActive(false);
+        setSelectedChapterId(id);
+      }}
+      initialQueue={
+        exerciseActive && initialExercise && initialExercise.length > 0
+          ? initialExercise
+          : dueByChapter.get(activeChapterId) ?? []
+      }
       openingDue={totalDue}
       openingsFile={openingsFile}
       nextOpening={nextOpening}
@@ -354,8 +393,12 @@ function ReviewSession({
   const programDue = openingsFile?.reduce((sum, o) => sum + o.due, 0);
   const sessionPct = queue.length ? Math.round((idx / queue.length) * 100) : 0;
   const counter = `${Math.min(idx + 1, queue.length)} / ${queue.length}`;
+  // The badge follows the CURRENT card's chapter, not the session's: an
+  // exercise queue can mix chapters that expect DIFFERENT replies on the
+  // same position — the label is then the only clue to which theory is
+  // being asked. Regular sessions are single-chapter, so nothing changes.
   const activeChapterName =
-    chapters.find(c => c.id === activeChapterId)?.name ?? '';
+    chapters.find(c => c.id === (card?.chapterId ?? activeChapterId))?.name ?? '';
   const nextDueChapter = chapters.find(
     c => c.id !== activeChapterId && (dueByChapter.get(c.id)?.length ?? 0) > 0,
   );

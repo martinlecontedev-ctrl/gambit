@@ -113,6 +113,17 @@ export type Folder = {
   createdAt: number;
 };
 
+/** Mapping of an opening to its mirror study on Lichess (push-only sync).
+ * Stored locally — Lichess never drives the repertoire. */
+export type StudySync = {
+  studyId: string;
+  /** Chapters created by the last push — replaced (then deleted) on the
+   * next one. The empty "Chapter 1" a created study ships with has no
+   * API-visible id and stays; harmless. */
+  chapterIds: string[];
+  pushedAt: number;
+};
+
 export type CardStats = {
   ease: number;
   /** Days. */

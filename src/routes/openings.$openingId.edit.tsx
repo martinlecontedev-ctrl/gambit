@@ -1,5 +1,12 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { Chess } from 'chessops/chess';
 import type { Config } from '@lichess-org/chessground/config';
 import type { DrawShape } from '@lichess-org/chessground/draw';
@@ -14,6 +21,7 @@ import {
   fenOf,
   legalDests,
   lineToSan,
+  moveNumberLabel,
   positionKey,
   sameMove,
   START_FEN,
@@ -22,6 +30,17 @@ import {
   uciToSanAt,
 } from '../domain/chess';
 import { engine, type EngineResult } from '../domain/engine';
+import {
+  ExplorerRateLimited,
+  ExplorerUnauthorized,
+  fetchExplorer,
+  type ExplorerMoveStats,
+  type ExplorerResult,
+  type ExplorerSource,
+} from '../domain/explorer';
+import { buildAdherenceReport } from '../domain/adherence';
+import { getAccount, login, subscribeAccount } from '../domain/lichessAuth';
+import { fetchRecentGamesCached, type RecentGame } from '../domain/lichessGames';
 import { NAG_COLORS, NAG_LABELS, NAG_ORDER, NAG_SYMBOLS } from '../domain/nag';
 import { recognizeOpening, type Opening as RecognizedOpening } from '../domain/openings-db';
 import { exportToPgn } from '../domain/pgn';
@@ -58,13 +77,31 @@ const KNOWN_BRUSHES: ArrowBrush[] = [
 const isKnownBrush = (b: string | undefined): b is ArrowBrush =>
   b !== undefined && (KNOWN_BRUSHES as string[]).includes(b);
 
-export const Route = createFileRoute('/openings/$openingId/edit')({ component: EditOpening });
+type EditSearch = { line?: string; ply?: number };
+
+export const Route = createFileRoute('/openings/$openingId/edit')({
+  component: EditOpening,
+  // Optional deep link (e.g. from the Lichess deviations tab): land on a
+  // given line with the cursor at a given ply.
+  validateSearch: (search: Record<string, unknown>): EditSearch => ({
+    line: typeof search.line === 'string' ? search.line : undefined,
+    ply: typeof search.ply === 'number' ? search.ply : undefined,
+  }),
+});
 
 function EditOpening() {
   const { openingId } = Route.useParams();
+  const { line, ply } = Route.useSearch();
   const opening = useStored(() => openingsRepo.get(openingId));
   if (!opening) return <NotFound />;
-  return <EditOpeningInner key={opening.id} opening={opening} />;
+  return (
+    <EditOpeningInner
+      key={opening.id}
+      opening={opening}
+      initialLineId={line}
+      initialPly={ply}
+    />
+  );
 }
 
 function NotFound() {
@@ -78,10 +115,26 @@ function NotFound() {
   );
 }
 
-function EditOpeningInner({ opening }: { opening: Opening }) {
+function EditOpeningInner({
+  opening,
+  initialLineId,
+  initialPly,
+}: {
+  opening: Opening;
+  initialLineId?: string;
+  initialPly?: number;
+}) {
   const navigate = useNavigate();
-  const [selectedLineId, setSelectedLineId] = useState<string>(opening.lines[0]?.id ?? '');
-  const [cursorIdx, setCursorIdx] = useState<number>(opening.lines[0]?.moves.length ?? 0);
+  const initialLine =
+    (initialLineId && opening.lines.find(l => l.id === initialLineId)) ||
+    opening.lines[0];
+  const [selectedLineId, setSelectedLineId] = useState<string>(initialLine?.id ?? '');
+  const [cursorIdx, setCursorIdx] = useState<number>(() => {
+    const len = initialLine?.moves.length ?? 0;
+    return initialPly !== undefined
+      ? Math.min(Math.max(0, initialPly), len)
+      : len;
+  });
 
   useEffect(() => {
     if (!opening.lines.find(l => l.id === selectedLineId)) {
@@ -759,6 +812,7 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
           </p>
         </div>
       </div>
+      <AdherencePanel opening={opening} />
       <div className="grid grid-cols-[240px_1fr_350px] items-start gap-8">
       <aside className="flex flex-col gap-2">
         <h2 className="mx-1 mb-3.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-ink-muted">
@@ -990,6 +1044,8 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
           annotation={currentAnnotation}
           onPatch={patch => updateAnnotation(currentFen, patch)}
         />
+
+        <ExplorerPanel fen={currentFen} onPlayMove={playMove} />
       </aside>
 
       {chapterModal && (
@@ -1018,6 +1074,133 @@ function EditOpeningInner({ opening }: { opening: Opening }) {
       )}
       </div>
     </main>
+  );
+}
+
+/**
+ * How the recent Lichess games fare inside THIS opening, judged by behavior:
+ * games are attributed to the opening they followed deepest (a Scotch game
+ * stops blaming the Italian once a Scotch repertoire exists), and each miss
+ * is read against the user's own baseline at that position — usually played
+ * = memory lapse to drill, never played = repertoire/practice disagreement.
+ * Silent unless connected and at least one game is attributed here.
+ */
+function AdherencePanel({ opening }: { opening: Opening }) {
+  const account = useSyncExternalStore(subscribeAccount, getAccount, getAccount);
+  const allOpenings = useStored(() => openingsRepo.list());
+  const navigate = useNavigate();
+  const [games, setGames] = useState<RecentGame[] | null>(null);
+
+  useEffect(() => {
+    if (!account) {
+      setGames(null);
+      return;
+    }
+    let cancelled = false;
+    fetchRecentGamesCached(account.username, account.token, 200)
+      .then(gs => {
+        if (!cancelled) setGames(gs);
+      })
+      .catch(() => {
+        /* panel is best-effort */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [account]);
+
+  const report = useMemo(
+    () => (games ? buildAdherenceReport(games, allOpenings, opening.id) : null),
+    [games, allOpenings, opening.id],
+  );
+
+  if (!report) return null;
+
+  const pct =
+    report.decisions > 0
+      ? Math.round((report.followed / report.decisions) * 100)
+      : 100;
+  const tone =
+    pct >= 80 ? 'text-success' : pct >= 50 ? 'text-warning-text' : 'text-danger';
+  const leaks = report.leaks.slice(0, 3);
+
+  return (
+    <div className="mb-4 grid grid-cols-[16rem_1fr] items-start gap-8 rounded-[14px] border border-line bg-surface px-5 py-4 shadow-resting">
+      <div className="border-r border-line pr-8">
+        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-ink-muted">
+          Fidélité au répertoire · Lichess
+        </div>
+        <div className="mt-1.5 flex items-baseline gap-2">
+          <span className={`text-[34px] font-extrabold leading-none tnum ${tone}`}>
+            {pct}%
+          </span>
+          <span className="text-[12.5px] text-meta tnum">
+            {report.followed}/{report.decisions} coups suivis
+          </span>
+        </div>
+        <p className="mt-2 text-[12px] text-meta tnum">
+          {report.games} partie{report.games > 1 ? 's' : ''} · sorties : toi ×
+          {report.userExits} · adv. ×{report.opponentExits} · tenue ×{report.held}
+        </p>
+      </div>
+
+      <div className="min-w-0">
+        <div className="mb-1.5 text-[10.5px] font-bold uppercase tracking-[0.14em] text-ink-muted">
+          Points de fuite
+        </div>
+        {leaks.length === 0 ? (
+          <p className="text-[13px] text-success">
+            Aucun coup manqué sur ces parties — la théorie tient.
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {leaks.map(leak => {
+              const disagreement = leak.followed === 0 && leak.missCount >= 2;
+              return (
+                <li key={leak.key} className="flex items-center gap-3">
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-ink-soft">
+                    <span className="font-semibold text-ink tnum">
+                      {moveNumberLabel(leak.ply)}
+                    </span>{' '}
+                    {leak.expectedSans.map((san, i) => (
+                      <span key={i} className="font-semibold text-ink">
+                        {i > 0 && ' / '}
+                        <FigurineSan san={san} />
+                      </span>
+                    ))}{' '}
+                    {disagreement ? (
+                      <>
+                        — tu joues <FigurineSan san={leak.missSan} />{' '}
+                        systématiquement ({leak.missCount}×) : révise, ou adapte
+                        le répertoire
+                      </>
+                    ) : (
+                      <>
+                        — joué <FigurineSan san={leak.missSan} /> {leak.missCount}
+                        × sur {leak.seen} passage{leak.seen > 1 ? 's' : ''}
+                        {leak.followed > 0 && ' (trou de mémoire)'}
+                      </>
+                    )}
+                  </span>
+                  <button
+                    onClick={() =>
+                      navigate({
+                        to: '/openings/$openingId/study',
+                        params: { openingId: opening.id },
+                        search: { program: false, pos: leak.key },
+                      })
+                    }
+                    className="shrink-0 rounded-full border border-accent-soft-border bg-accent-soft px-2.5 py-0.5 text-[11.5px] font-semibold text-accent-soft-text transition hover:brightness-[0.97]"
+                  >
+                    Réviser
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1939,6 +2122,250 @@ function SelectedMove({
     >
       <FigurineSan san={san} />
     </button>
+  );
+}
+
+const EXPLORER_SOURCES: { id: ExplorerSource; label: string }[] = [
+  { id: 'lichess', label: 'Lichess' },
+  { id: 'masters', label: 'Masters' },
+];
+
+const GAMES_FMT = new Intl.NumberFormat('fr-FR', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
+
+/**
+ * Lichess opening explorer panel: for the position under the cursor, the
+ * most played moves with their game share and the win/draw/loss split.
+ * Opt-in (talks to the public Lichess API) and persisted, like the engine
+ * toggle. Clicking a move plays it through `playMove`, so the usual
+ * variant/chapter rules apply.
+ */
+function ExplorerPanel({
+  fen,
+  onPlayMove,
+}: {
+  fen: string;
+  onPlayMove: (uci: string) => void;
+}) {
+  const [enabled, setEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('gambit.explorer.enabled') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [source, setSource] = useState<ExplorerSource>(() => {
+    try {
+      return localStorage.getItem('gambit.explorer.source') === 'masters'
+        ? 'masters'
+        : 'lichess';
+    } catch {
+      return 'lichess';
+    }
+  });
+  const [result, setResult] = useState<ExplorerResult | null>(null);
+  const [status, setStatus] = useState<
+    'loading' | 'ready' | 'limited' | 'unauthorized' | 'error'
+  >('ready');
+  // The Lichess session feeds the Authorization header — refetch when it
+  // appears (login completes async after the OAuth redirect).
+  const account = useSyncExternalStore(subscribeAccount, getAccount, getAccount);
+
+  const toggle = () => {
+    setEnabled(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('gambit.explorer.enabled', next ? '1' : '0');
+      } catch {
+        /* ignored */
+      }
+      return next;
+    });
+  };
+
+  const pickSource = (s: ExplorerSource) => {
+    setSource(s);
+    try {
+      localStorage.setItem('gambit.explorer.source', s);
+    } catch {
+      /* ignored */
+    }
+  };
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    setStatus('loading');
+    // Debounced: scrubbing through a line must not fire one request per ply.
+    // The previous result stays visible (dimmed) while the new one loads.
+    const t = setTimeout(() => {
+      fetchExplorer(fen, source)
+        .then(r => {
+          if (cancelled) return;
+          setResult(r);
+          setStatus('ready');
+        })
+        .catch(e => {
+          if (cancelled) return;
+          setStatus(
+            e instanceof ExplorerUnauthorized
+              ? 'unauthorized'
+              : e instanceof ExplorerRateLimited
+                ? 'limited'
+                : 'error',
+          );
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [enabled, fen, source, account]);
+
+  return (
+    <div className="rounded-[14px] border border-line bg-surface p-4 shadow-resting">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
+          Explorateur
+        </span>
+        <span className="flex items-center gap-1.5">
+          {enabled &&
+            EXPLORER_SOURCES.map(s => (
+              <button
+                key={s.id}
+                onClick={() => pickSource(s.id)}
+                className={`rounded-full border px-2.5 py-0.5 text-[11.5px] font-semibold transition ${
+                  source === s.id
+                    ? 'border-accent-soft-border bg-accent-soft text-accent-soft-text'
+                    : 'border-line-strong text-ink-muted hover:bg-track hover:text-ink'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          <button
+            onClick={toggle}
+            title={
+              enabled
+                ? 'Désactiver l’explorateur'
+                : 'Activer (interroge l’API publique de Lichess)'
+            }
+            className={`rounded-full border px-2.5 py-0.5 text-[11.5px] font-semibold transition ${
+              enabled
+                ? 'border-info-border bg-info-soft text-info'
+                : 'border-line-strong text-ink-muted hover:bg-track hover:text-ink'
+            }`}
+          >
+            {enabled ? 'ON' : 'OFF'}
+          </button>
+        </span>
+      </div>
+
+      {!enabled ? (
+        <p className="text-[12.5px] text-meta">
+          Coups les plus joués et résultats associés (parties Lichess 1800+ ou
+          parties de maîtres), pour la position affichée.
+        </p>
+      ) : status === 'unauthorized' ? (
+        <div className="space-y-2.5">
+          <p className="text-[12.5px] text-meta">
+            {account
+              ? 'Session Lichess expirée ou révoquée — reconnecte ton compte.'
+              : "L'explorateur passe par ton compte Lichess (gratuit, aucun scope demandé)."}
+          </p>
+          <button
+            onClick={() => void login()}
+            className="btn-accent w-full rounded-md px-3 py-2 text-xs font-semibold"
+          >
+            Connecter mon compte Lichess
+          </button>
+        </div>
+      ) : status === 'error' ? (
+        <p className="text-[12.5px] text-meta">Explorateur indisponible.</p>
+      ) : status === 'limited' ? (
+        <p className="text-[12.5px] text-warning-text">
+          Limite de l'API atteinte — l'explorateur se met en pause une minute.
+        </p>
+      ) : !result ? (
+        <p className="animate-pulse text-[12.5px] text-meta">Chargement…</p>
+      ) : result.moves.length === 0 ? (
+        <p className="text-[12.5px] text-meta">
+          Aucune partie dans cette base pour cette position.
+        </p>
+      ) : (
+        <div
+          className={`transition-opacity ${status === 'loading' ? 'opacity-45' : ''}`}
+        >
+          <p className="mb-2 text-[11.5px] text-meta tnum">
+            {GAMES_FMT.format(result.total)} parties
+          </p>
+          <div className="space-y-1">
+            {result.moves.map(m => (
+              <ExplorerRow
+                key={m.uci}
+                move={m}
+                positionTotal={result.total}
+                onPlay={() => onPlayMove(m.uci)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExplorerRow({
+  move,
+  positionTotal,
+  onPlay,
+}: {
+  move: ExplorerMoveStats;
+  positionTotal: number;
+  onPlay: () => void;
+}) {
+  const share =
+    positionTotal > 0 ? Math.round((move.total / positionTotal) * 100) : 0;
+  const wp = move.total > 0 ? (move.white / move.total) * 100 : 0;
+  const dp = move.total > 0 ? (move.draws / move.total) * 100 : 0;
+  const bp = move.total > 0 ? 100 - wp - dp : 0;
+  return (
+    <div
+      className="flex items-center gap-2"
+      title={`${move.total.toLocaleString('fr-FR')} parties · Blancs ${Math.round(wp)}% · Nulles ${Math.round(dp)}% · Noirs ${Math.round(bp)}%`}
+    >
+      <button
+        onClick={onPlay}
+        className="w-14 shrink-0 rounded-md px-1.5 py-0.5 text-left text-[13.5px] font-semibold text-ink transition hover:bg-track"
+      >
+        <FigurineSan san={move.san} />
+      </button>
+      <span className="w-9 shrink-0 text-right text-[11.5px] text-ink-muted tnum">
+        {share}%
+      </span>
+      <div className="flex h-4 flex-1 overflow-hidden rounded border border-line text-[9px] font-bold leading-none tnum">
+        <div
+          className="flex items-center justify-center bg-surface-high text-ink-soft"
+          style={{ width: `${wp}%` }}
+        >
+          {wp >= 18 ? `${Math.round(wp)}` : ''}
+        </div>
+        <div
+          className="flex items-center justify-center bg-line-strong text-ink-soft"
+          style={{ width: `${dp}%` }}
+        >
+          {dp >= 18 ? `${Math.round(dp)}` : ''}
+        </div>
+        <div
+          className="flex items-center justify-center bg-ink text-paper"
+          style={{ width: `${bp}%` }}
+        >
+          {bp >= 18 ? `${Math.round(bp)}` : ''}
+        </div>
+      </div>
+    </div>
   );
 }
 
