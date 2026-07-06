@@ -65,6 +65,15 @@ export async function recognizeOpeningMatches(
   return matches;
 }
 
+/** "Italian Game: Classical Variation" → "Italian Game". */
+export const familyOf = (name: string): string => name.split(':')[0].trim();
+
+/** Direct dataset lookup for one position key. `null` = unnamed position. */
+export async function openingAtKey(key: string): Promise<Opening | null> {
+  const db = await load();
+  return db[key] ?? null;
+}
+
 /** Deepest opening name reached — the chess.com / lichess analysis label. */
 export async function recognizeOpening(
   uciMoves: string[],

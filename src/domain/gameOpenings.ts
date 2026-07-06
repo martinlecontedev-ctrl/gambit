@@ -14,7 +14,7 @@ import {
   sansToUcis,
   START_FEN,
 } from './chess';
-import { recognizeOpeningMatches } from './openings-db';
+import { familyOf, recognizeOpeningMatches } from './openings-db';
 import type { RecentGame } from './lichessGames';
 import type { Color } from './types';
 
@@ -40,7 +40,6 @@ export type PlayedOpeningStat = {
   familyKey: string;
 };
 
-const familyOf = (name: string): string => name.split(':')[0].trim();
 
 const keyAtPly = (ucis: string[], ply: number): string => {
   let chess = chessFromFen(START_FEN);

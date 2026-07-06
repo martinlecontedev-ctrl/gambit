@@ -38,7 +38,11 @@ import {
   type ExplorerResult,
   type ExplorerSource,
 } from '../domain/explorer';
-import { buildAdherenceReport } from '../domain/adherence';
+import {
+  buildAdherenceReport,
+  refineAdherence,
+  type RefinedAdherence,
+} from '../domain/adherence';
 import { getAccount, login, subscribeAccount } from '../domain/lichessAuth';
 import { fetchRecentGamesCached, type RecentGame } from '../domain/lichessGames';
 import { NAG_COLORS, NAG_LABELS, NAG_ORDER, NAG_SYMBOLS } from '../domain/nag';
@@ -1114,15 +1118,32 @@ function AdherencePanel({ opening }: { opening: Opening }) {
     [games, allOpenings, opening.id],
   );
 
-  if (!report) return null;
+  // Leak classification is async (lazy ECO index): lapse vs disagreement vs
+  // deliberate alternative opening — the latter leaves the fidelity math.
+  const [refined, setRefined] = useState<RefinedAdherence | null>(null);
+  useEffect(() => {
+    if (!report) {
+      setRefined(null);
+      return;
+    }
+    let cancelled = false;
+    refineAdherence(report).then(r => {
+      if (!cancelled) setRefined(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [report]);
+
+  if (!refined) return null;
 
   const pct =
-    report.decisions > 0
-      ? Math.round((report.followed / report.decisions) * 100)
+    refined.countedDecisions > 0
+      ? Math.round((refined.followed / refined.countedDecisions) * 100)
       : 100;
   const tone =
     pct >= 80 ? 'text-success' : pct >= 50 ? 'text-warning-text' : 'text-danger';
-  const leaks = report.leaks.slice(0, 3);
+  const leaks = refined.leaks.slice(0, 3);
 
   return (
     <div className="mb-4 grid grid-cols-[16rem_1fr] items-start gap-8 rounded-[14px] border border-line bg-surface px-5 py-4 shadow-resting">
@@ -1135,12 +1156,15 @@ function AdherencePanel({ opening }: { opening: Opening }) {
             {pct}%
           </span>
           <span className="text-[12.5px] text-meta tnum">
-            {report.followed}/{report.decisions} coups suivis
+            {refined.followed}/{refined.countedDecisions} coups suivis
           </span>
         </div>
         <p className="mt-2 text-[12px] text-meta tnum">
-          {report.games} partie{report.games > 1 ? 's' : ''} · sorties : toi ×
-          {report.userExits} · adv. ×{report.opponentExits} · tenue ×{report.held}
+          {refined.games} partie{refined.games > 1 ? 's' : ''} · sorties : toi ×
+          {refined.userExits} · adv. ×{refined.opponentExits} · tenue ×
+          {refined.held}
+          {refined.alternativeMisses > 0 &&
+            ` · ${refined.alternativeMisses} coups d'autres ouvertures exclus`}
         </p>
       </div>
 
@@ -1154,34 +1178,47 @@ function AdherencePanel({ opening }: { opening: Opening }) {
           </p>
         ) : (
           <ul className="space-y-1">
-            {leaks.map(leak => {
-              const disagreement = leak.followed === 0 && leak.missCount >= 2;
-              return (
-                <li key={leak.key} className="flex items-center gap-3">
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-ink-soft">
-                    <span className="font-semibold text-ink tnum">
-                      {moveNumberLabel(leak.ply)}
-                    </span>{' '}
-                    {leak.expectedSans.map((san, i) => (
-                      <span key={i} className="font-semibold text-ink">
-                        {i > 0 && ' / '}
-                        <FigurineSan san={san} />
-                      </span>
-                    ))}{' '}
-                    {disagreement ? (
-                      <>
-                        — tu joues <FigurineSan san={leak.missSan} />{' '}
-                        systématiquement ({leak.missCount}×) : révise, ou adapte
-                        le répertoire
-                      </>
-                    ) : (
-                      <>
-                        — joué <FigurineSan san={leak.missSan} /> {leak.missCount}
-                        × sur {leak.seen} passage{leak.seen > 1 ? 's' : ''}
-                        {leak.followed > 0 && ' (trou de mémoire)'}
-                      </>
-                    )}
-                  </span>
+            {leaks.map(leak => (
+              <li key={leak.key} className="flex items-center gap-3">
+                <span className="min-w-0 flex-1 truncate text-[13px] text-ink-soft">
+                  <span className="font-semibold text-ink tnum">
+                    {moveNumberLabel(leak.ply)}
+                  </span>{' '}
+                  {leak.expectedSans.map((san, i) => (
+                    <span key={i} className="font-semibold text-ink">
+                      {i > 0 && ' / '}
+                      <FigurineSan san={san} />
+                    </span>
+                  ))}{' '}
+                  {leak.kind === 'alternative' ? (
+                    <>
+                      — tu joues aussi <em>{leak.openingName}</em> ici (
+                      <FigurineSan san={leak.missSan} /> ×{leak.missTopCount}) :
+                      autre ouverture, hors calcul
+                    </>
+                  ) : leak.kind === 'disagreement' ? (
+                    <>
+                      — tu joues <FigurineSan san={leak.missSan} />{' '}
+                      systématiquement ({leak.missCount}×) : révise, ou adapte
+                      le répertoire
+                    </>
+                  ) : (
+                    <>
+                      — joué <FigurineSan san={leak.missSan} /> {leak.missCount}×
+                      sur {leak.seen} passage{leak.seen > 1 ? 's' : ''}
+                      {leak.followed > 0 && ' (trou de mémoire)'}
+                    </>
+                  )}
+                </span>
+                {leak.kind === 'alternative' ? (
+                  <button
+                    onClick={() => navigate({ to: '/lichess' })}
+                    title="Voir tes ouvertures jouées — et créer son répertoire si tu veux la driller"
+                    className="shrink-0 rounded-full border border-line-strong bg-surface-high px-2.5 py-0.5 text-[11.5px] font-semibold text-ink transition hover:bg-field"
+                  >
+                    Ouvertures jouées
+                  </button>
+                ) : (
                   <button
                     onClick={() =>
                       navigate({
@@ -1194,9 +1231,9 @@ function AdherencePanel({ opening }: { opening: Opening }) {
                   >
                     Réviser
                   </button>
-                </li>
-              );
-            })}
+                )}
+              </li>
+            ))}
           </ul>
         )}
       </div>

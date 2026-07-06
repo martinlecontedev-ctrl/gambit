@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildAdherenceReport } from './adherence';
+import { buildAdherenceReport, refineAdherence } from './adherence';
 import type { Color, Opening } from './types';
 
 const opening = (id: string, name: string, moves: string[]): Opening => ({
@@ -79,5 +79,51 @@ describe('buildAdherenceReport', () => {
       'it',
     );
     expect(r).toBeNull();
+  });
+});
+
+describe('refineAdherence', () => {
+  it('reclassifies a repeated ECO-named move as an alternative opening', async () => {
+    const report = buildAdherenceReport(
+      [game(SCOTCH_GAME), game(SCOTCH_GAME), game(ITALIAN_HELD)],
+      [italian],
+      'it',
+    )!;
+    const refined = await refineAdherence(report);
+    const alt = refined.leaks[0];
+    expect(alt).toMatchObject({ kind: 'alternative', openingName: 'Scotch Game' });
+    // The two Scotch d4s leave the denominator: playing the Scotch is not
+    // failing the Italian. 4 (held) + 2×2 (scotch e4,Nf3) = 8 counted, all followed.
+    expect(refined.alternativeMisses).toBe(2);
+    expect(refined.countedDecisions).toBe(report.decisions - 2);
+    expect(refined.followed).toBe(refined.countedDecisions);
+  });
+
+  it('keeps a one-off move as a lapse, even when it lands in named theory', async () => {
+    const report = buildAdherenceReport(
+      [game(ITALIAN_HELD), game(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6'])],
+      [italian],
+      'it',
+    )!;
+    const refined = await refineAdherence(report);
+    expect(refined.leaks[0]).toMatchObject({ missSan: 'Bb5', kind: 'lapse' });
+    expect(refined.alternativeMisses).toBe(0);
+  });
+
+  it('marks repeated unnamed junk as a disagreement, not an alternative', async () => {
+    const report = buildAdherenceReport(
+      [
+        game(['e4', 'e5', 'Nf3', 'Nc6', 'a4', 'a5']),
+        game(['e4', 'e5', 'Nf3', 'Nc6', 'a4', 'd6']),
+      ],
+      [italian],
+      'it',
+    )!;
+    const refined = await refineAdherence(report);
+    expect(refined.leaks[0]).toMatchObject({
+      missSan: 'a4',
+      kind: 'disagreement',
+    });
+    expect(refined.alternativeMisses).toBe(0);
   });
 });

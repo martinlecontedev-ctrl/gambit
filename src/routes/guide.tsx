@@ -211,10 +211,13 @@ function Guide() {
               répertoire</strong> juge par comportement : chaque partie n'est
               comptée que pour l'ouverture qu'elle a suivie le plus
               profondément, et chaque coup manqué est lu contre ta propre
-              régularité — « joué ♗b5 2× sur 7 passages » = trou de mémoire à
-              réviser ; « tu joues d4 systématiquement » = désaccord
-              répertoire/pratique, à toi de trancher. Chaque point de fuite a
-              son bouton <Kbd>Réviser</Kbd>.
+              régularité. Un même coup répété qui mène à une ouverture
+              <em> nommée</em> (ex. l'Écossaise face à ton Italienne) est
+              classé <strong>autre ouverture</strong> et sort du calcul ;
+              « joué ♗b5 1× sur 7 passages » = trou de mémoire à réviser ;
+              un coup hors-théorie répété = désaccord répertoire/pratique, à
+              toi de trancher. Boutons <Kbd>Réviser</Kbd> ou renvoi vers
+              Ouvertures jouées selon le cas.
             </Item>
             <Item>
               <strong>Sauvegarde du répertoire</strong> : chaque ouverture peut

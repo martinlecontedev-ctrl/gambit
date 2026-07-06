@@ -27,6 +27,7 @@ import {
   uciToSanAt,
 } from './chess';
 import { buildRepertoireBook, type RepertoireBook } from './deviation';
+import { familyOf, openingAtKey } from './openings-db';
 import type { Color, Opening } from './types';
 
 type GameLike = {
@@ -98,8 +99,9 @@ export type LeakPosition = {
   seen: number;
   /** Times the repertoire move was played there. */
   followed: number;
-  /** Most played wrong move (SAN) and its count. */
+  /** Most played wrong move (SAN), its own count, and the total misses. */
   missSan: string;
+  missTopCount: number;
   missCount: number;
 };
 
@@ -218,9 +220,87 @@ export function buildAdherenceReport(
       seen: agg.seen,
       followed: agg.followed,
       missSan,
+      missTopCount: missCount,
       missCount: missTotal,
     });
   }
   report.leaks.sort((a, b) => b.missCount - a.missCount || a.ply - b.ply);
   return report;
+}
+
+export type RefinedLeak = LeakPosition &
+  (
+    | { kind: 'lapse' | 'disagreement' }
+    /** The user repeatedly plays the same off-repertoire move AND it lands
+     * in named ECO theory: that's another opening, not a miss. */
+    | { kind: 'alternative'; openingName: string }
+  );
+
+export type RefinedAdherence = {
+  games: AdherenceReport['games'];
+  userExits: number;
+  opponentExits: number;
+  held: number;
+  followed: number;
+  /** Decisions actually judged: alternative-opening moves are excluded —
+   * playing the Scotch is not failing the Italian. */
+  countedDecisions: number;
+  alternativeMisses: number;
+  leaks: RefinedLeak[];
+};
+
+/**
+ * Classify each leak (async: the ECO index is lazy-loaded).
+ *   repeated same move + named resulting position → alternative (excluded
+ *     from the fidelity denominator);
+ *   never followed + repeated → repertoire/practice disagreement;
+ *   otherwise → memory lapse.
+ * Repetition filters out one-off blunders; the ECO name filters out weird
+ * repeated moves, which stay disagreements.
+ */
+export async function refineAdherence(
+  report: AdherenceReport,
+): Promise<RefinedAdherence> {
+  const leaks: RefinedLeak[] = [];
+  let alternativeMisses = 0;
+  for (const leak of report.leaks) {
+    let refined: RefinedLeak | null = null;
+    if (leak.missTopCount >= 2) {
+      const name = await namedOpeningAfter(leak.key, leak.missSan);
+      if (name) {
+        refined = { ...leak, kind: 'alternative', openingName: familyOf(name) };
+        alternativeMisses += leak.missTopCount;
+      }
+    }
+    if (!refined) {
+      refined = {
+        ...leak,
+        kind:
+          leak.followed === 0 && leak.missCount >= 2 ? 'disagreement' : 'lapse',
+      };
+    }
+    leaks.push(refined);
+  }
+  return {
+    games: report.games,
+    userExits: report.userExits,
+    opponentExits: report.opponentExits,
+    held: report.held,
+    followed: report.followed,
+    countedDecisions: report.decisions - alternativeMisses,
+    alternativeMisses,
+    leaks,
+  };
+}
+
+async function namedOpeningAfter(
+  key: string,
+  san: string,
+): Promise<string | null> {
+  const chess = chessFromFen(`${key} 0 1`);
+  const move = parseSan(chess, san);
+  if (!move) return null;
+  chess.play(move);
+  const hit = await openingAtKey(positionKey(fenOf(chess)));
+  return hit?.name ?? null;
 }
