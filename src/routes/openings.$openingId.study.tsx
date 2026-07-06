@@ -126,8 +126,10 @@ function StudyImpl({
 
   // Exercise mode: drill the exact cards of one position, due or not, review
   // windows bypassed — a move missed in a real game deserves a rep even if
-  // it was windowed out of the daily drill.
-  const exerciseQueue = useMemo(() => {
+  // it was windowed out of the daily drill. Built ONCE at mount (lazy init):
+  // ReviewSession freezes its own queue anyway, so recomputing after every
+  // grade would be pure waste.
+  const [initialExercise] = useState(() => {
     if (!exercisePos || !opening) return undefined;
     const unwindowed = {
       ...opening,
@@ -136,7 +138,7 @@ function StudyImpl({
     return buildCards(unwindowed, storedCards, now).filter(
       c => positionKey(c.fen) === exercisePos,
     );
-  }, [exercisePos, opening, storedCards, now]);
+  });
 
   // Review is scoped to one chapter at a time. Group the due cards by chapter
   // so the rail can show per-chapter counts and the session can drill them
@@ -172,7 +174,7 @@ function StudyImpl({
   // choice (rail click or the "next chapter" button).
   const [selectedChapterId, setSelectedChapterId] = useState<string>(
     () =>
-      exerciseQueue?.[0]?.chapterId ??
+      initialExercise?.[0]?.chapterId ??
       sortedChapters.find(c => (dueByChapter.get(c.id)?.length ?? 0) > 0)?.id ??
       sortedChapters[0]?.id ??
       '',
@@ -182,15 +184,13 @@ function StudyImpl({
   // that must NOT yank the running session away — ReviewSession's own end
   // screen (session stats, next chapter / next opening links) handles it.
   const [hadDueAtMount] = useState(() =>
-    exerciseQueue ? exerciseQueue.length > 0 : totalDue > 0,
+    initialExercise ? initialExercise.length > 0 : totalDue > 0,
   );
 
-  // The exercise queue is frozen at mount (post-grade recomputes must not
-  // reshuffle it) and consumed once: switching chapter mid-exercise falls
+  // The exercise is consumed once: switching chapter mid-exercise falls
   // back to the regular due queue of the clicked chapter.
-  const [initialExercise] = useState(exerciseQueue);
   const [exerciseActive, setExerciseActive] = useState(
-    () => (exerciseQueue?.length ?? 0) > 0,
+    () => (initialExercise?.length ?? 0) > 0,
   );
 
   if (!opening) return <NotFound />;

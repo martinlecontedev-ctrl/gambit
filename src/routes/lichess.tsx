@@ -100,6 +100,17 @@ function LichessPage() {
     [openings],
   );
 
+  // One walk per game per repertoire change, shared by the rows and the
+  // popularity lookups — re-analyzing on every render (which the sequential
+  // popularity updates trigger repeatedly) would redo the same work.
+  const verdictByGame = useMemo(() => {
+    const m = new Map<string, DeviationVerdict>();
+    for (const g of games ?? []) {
+      m.set(g.id, analyzeGame(g.sans, g.userColor, books[g.userColor]));
+    }
+    return m;
+  }, [games, books]);
+
   /** Exercise session on the exact position where the user left book. */
   const reviseMissed = (openingId: string, pos: string) => {
     navigate({
@@ -169,8 +180,8 @@ function LichessPage() {
     }
     const candidates = new Map<string, { fen: string; playedUci: string }>();
     for (const g of games) {
-      const v = analyzeGame(g.sans, g.userColor, books[g.userColor]);
-      if (v.kind === 'user-left' && v.ply >= MIN_DEVIATION_PLY) {
+      const v = verdictByGame.get(g.id);
+      if (v && v.kind === 'user-left' && v.ply >= MIN_DEVIATION_PLY) {
         const k = `${v.key}|${v.playedUci}`;
         if (!candidates.has(k)) {
           candidates.set(k, { fen: fenFromKey(v.key), playedUci: v.playedUci });
@@ -201,7 +212,7 @@ function LichessPage() {
     return () => {
       cancelled = true;
     };
-  }, [games, books]);
+  }, [games, verdictByGame]);
 
   // Played-openings aggregation (async: the ECO index is lazy-loaded).
   const [playedStats, setPlayedStats] = useState<PlayedOpeningStat[] | null>(null);
@@ -286,9 +297,8 @@ function LichessPage() {
             games={games}
             status={status}
             renderRow={g => {
-              let deviation = significantDeviation(
-                analyzeGame(g.sans, g.userColor, books[g.userColor]),
-              );
+              const verdict = verdictByGame.get(g.id);
+              let deviation = verdict ? significantDeviation(verdict) : undefined;
               // A user deviation only counts once the Lichess database
               // confirms the played move is rare — popular = other opening.
               if (deviation?.kind === 'user-left') {
