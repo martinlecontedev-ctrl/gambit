@@ -18,7 +18,8 @@
 // add their own skip-stale check around analyze() — the engine just runs
 // what it's given.
 
-const ENGINE_URL = '/engine/stockfish-18-lite-single.js';
+// BASE_URL-relative: the site may be served under a subpath (GitHub Pages).
+const ENGINE_URL = `${import.meta.env.BASE_URL}engine/stockfish-18-lite-single.js`;
 const WATCHDOG_MS = 5000;
 const DEBUG = false;
 
