@@ -309,8 +309,17 @@ function buildWeekDays(byDay: Map<string, number>, now: number): WeekDay[] {
   return days;
 }
 
-/** Compact streak card: streak text on the left, the last 7 days as thin bars
- * on the right. Sits at half width beside the review banner. */
+/** Round the week's peak up to a clean, even axis maximum so the midpoint
+ * gridline always lands on a whole number. */
+function niceAxisMax(peak: number): number {
+  const steps = [2, 4, 6, 8, 10, 12, 16, 20, 24, 30, 40, 50, 60, 80, 100];
+  for (const s of steps) if (peak <= s) return s;
+  return Math.ceil(peak / 50) * 50;
+}
+
+/** Streak card: streak text on the left, a small bar chart of the last 7 days'
+ * review counts on the right (review count on the Y axis, days on the X axis).
+ * A CSS grid keeps the Y-axis labels, gridlines, bars and day labels aligned. */
 function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number }) {
   const tr = useHomeStrings();
   const lang = useLang();
@@ -330,11 +339,14 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
   const byDay = useMemo(() => activityByDay(reviews), [reviews]);
   const streak = useMemo(() => streaks(reviews, now), [reviews, now]);
   const week = useMemo(() => buildWeekDays(byDay, now), [byDay, now]);
-  const peak = useMemo(() => Math.max(1, ...week.map(d => d.count)), [week]);
+  const axisMax = useMemo(
+    () => niceAxisMax(Math.max(1, ...week.map(d => d.count))),
+    [week],
+  );
   const todayKey = localDate(now);
 
   return (
-    <div className="flex h-full min-h-40 items-stretch gap-5 rounded-[18px] border border-line bg-surface px-5 py-4.5 text-ink shadow-card sm:px-6">
+    <div className="flex h-full min-h-45 items-stretch gap-5 rounded-[18px] border border-line bg-surface px-5 py-4.5 text-ink shadow-card sm:px-6">
       <div className="flex shrink-0 flex-col justify-center">
         <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
           {tr.activity.streakTitle}
@@ -358,30 +370,40 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
         </div>
       </div>
 
-      {/* Tall thin-bar graph: bars fill the card height and rise with the
-          day's review count (relative to the week's peak). */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex flex-1 items-end gap-[3px]">
+      <div className="grid min-w-0 flex-1 grid-cols-[1.75rem_1fr] grid-rows-[1fr_auto] gap-x-2">
+        {/* Y axis: review-count ticks aligned to the gridlines. */}
+        <div className="flex flex-col justify-between text-right text-[9px] leading-none text-ink-muted tnum">
+          <span>{axisMax}</span>
+          <span>{axisMax / 2}</span>
+          <span>0</span>
+        </div>
+        {/* Plot: gridlines behind, one thin bar per day. */}
+        <div className="relative flex items-stretch gap-[3px]">
+          <div className="pointer-events-none absolute inset-0 flex flex-col justify-between">
+            <span className="border-t border-line/70" />
+            <span className="border-t border-line/70" />
+            <span className="border-t border-line/70" />
+          </div>
           {week.map(d => {
             const isToday = d.key === todayKey;
             return (
-              <span
-                key={d.key}
-                title={tr.activity.dayTooltip(d.count, dayFmt.format(d.date))}
-                className="flex-1 rounded-t-xs transition-[filter] hover:brightness-90"
-                style={{
-                  height: d.count > 0 ? `${Math.max(6, (d.count / peak) * 100)}%` : '3px',
-                  background:
-                    d.count > 0
-                      ? isToday
-                        ? 'var(--accent)'
-                        : 'color-mix(in srgb, var(--accent) 72%, var(--color-surface))'
-                      : 'var(--color-track)',
-                }}
-              />
+              <div key={d.key} className="relative flex flex-1 flex-col justify-end">
+                <div
+                  title={tr.activity.dayTooltip(d.count, dayFmt.format(d.date))}
+                  className="mx-auto w-2 rounded-t-[2px] transition-[filter] hover:brightness-90"
+                  style={{
+                    height: d.count > 0 ? `${Math.max(2, (d.count / axisMax) * 100)}%` : 0,
+                    background: isToday
+                      ? 'var(--accent)'
+                      : 'color-mix(in srgb, var(--accent) 66%, var(--color-surface))',
+                  }}
+                />
+              </div>
             );
           })}
         </div>
+        {/* X axis: weekday initials, aligned under the bars. */}
+        <div />
         <div className="mt-1.5 flex gap-[3px]">
           {week.map(d => (
             <span
