@@ -274,10 +274,10 @@ function LichessPage() {
     <main className="mx-auto max-w-260 px-10 pt-10 pb-20">
       <div className="mb-6.5 flex flex-wrap items-end justify-between gap-6">
         <div>
-          <h1 className="text-[42px] font-extrabold leading-none tracking-[-0.02em]">
+          <h1 className="text-[42px] font-extrabold leading-none tracking-[-0.02em] text-on-ink">
             Lichess
           </h1>
-          <p className="mt-2 text-[15px] text-meta">
+          <p className="mt-2 text-[15px] text-on-muted">
             {account
               ? `Connecté en tant que ${account.username}.`
               : 'Connecte ton compte pour croiser tes parties avec ton répertoire.'}
@@ -288,13 +288,13 @@ function LichessPage() {
             <button
               onClick={() => load(account, true)}
               disabled={status === 'loading'}
-              className="h-11 rounded-btn border border-line-strong bg-surface px-4.5 text-[14.5px] font-semibold text-ink shadow-resting transition hover:bg-surface-high disabled:opacity-40"
+              className="h-11 rounded-btn border border-chip-border bg-chip px-4.5 text-[14.5px] font-semibold text-chip-text shadow-resting transition hover:border-chip-hover disabled:opacity-40"
             >
               Actualiser
             </button>
             <button
               onClick={logout}
-              className="h-11 rounded-btn border border-line-strong bg-surface px-4.5 text-[14.5px] font-semibold text-ink-soft shadow-resting transition hover:bg-danger-soft hover:text-danger"
+              className="h-11 rounded-btn border border-chip-border bg-chip px-4.5 text-[14.5px] font-semibold text-chip-text shadow-resting transition hover:border-danger-border hover:bg-danger-soft hover:text-danger-text"
             >
               Déconnecter
             </button>
@@ -364,7 +364,7 @@ function LichessPage() {
 
 function ConnectCard() {
   return (
-    <div className="flex flex-col items-center rounded-[18px] border border-line bg-surface px-8 py-14 text-center shadow-card">
+    <div className="flex flex-col items-center rounded-[18px] border border-line bg-surface px-8 py-14 text-center text-ink shadow-card">
       <p className="text-lg font-bold">Connecte ton compte Lichess</p>
       <p className="mt-2 max-w-md text-sm text-meta">
         Tes dernières parties comparées à ton répertoire — où es-tu sorti de la
@@ -473,7 +473,7 @@ function PlayedOpeningRow({
       </span>
       <span className="flex h-4 w-28 shrink-0 overflow-hidden rounded border border-line text-[9px] font-bold leading-none tnum">
         <span
-          className="flex items-center justify-center bg-success-soft text-success"
+          className="flex items-center justify-center bg-success-soft text-success-text"
           style={{ width: `${wp}%` }}
         >
           {wp >= 25 ? Math.round(wp) : ''}
@@ -485,7 +485,7 @@ function PlayedOpeningRow({
           {dp >= 25 ? Math.round(dp) : ''}
         </span>
         <span
-          className="flex items-center justify-center bg-danger-soft text-danger"
+          className="flex items-center justify-center bg-danger-soft text-danger-text"
           style={{ width: `${lp}%` }}
         >
           {lp >= 25 ? Math.round(lp) : ''}
@@ -502,7 +502,7 @@ function PlayedOpeningRow({
         <button
           onClick={onCreate}
           title="Créer un répertoire pour cette ouverture, pré-rempli avec tes coups les plus joués"
-          className="w-30 shrink-0 rounded-full border border-accent-soft-border bg-accent-soft px-2 py-1 text-[11.5px] font-semibold text-accent-soft-text transition hover:brightness-[0.97]"
+          className="w-30 shrink-0 rounded-full border border-accent-soft-border bg-accent-soft px-2 py-1 text-[11.5px] font-semibold text-accent-soft-text transition hover:brightness-[0.98]"
         >
           Créer un répertoire
         </button>
@@ -530,7 +530,7 @@ function GamesCard({
   const current = Math.min(page, pageCount - 1);
 
   return (
-    <div className="rounded-[18px] border border-line bg-surface px-6 py-5 shadow-card">
+    <div className="rounded-[18px] border border-line bg-surface px-6 py-5 text-ink shadow-card">
       <div className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
         Parties récentes · face au répertoire
       </div>
@@ -709,7 +709,7 @@ function SyncCard({
                       ? 'Pousser cette ouverture vers son étude Lichess'
                       : 'Ouverture vide — rien à pousser'
                   }
-                  className="shrink-0 rounded-full border border-line-strong bg-surface-high px-2.5 py-1 text-[12px] font-semibold text-ink transition hover:bg-field disabled:cursor-not-allowed disabled:opacity-40"
+                  className="shrink-0 rounded-full border border-chip-border bg-chip px-2.5 py-1 text-[12px] font-semibold text-chip-text transition hover:border-chip-hover disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {pushing[o.id] ? 'Envoi…' : 'Pousser'}
                 </button>
@@ -740,9 +740,9 @@ function GameRow({
   });
   const resultTone =
     game.result === 'win'
-      ? 'border-success-border bg-success-soft text-success'
+      ? 'border-success-border bg-success-soft text-success-text'
       : game.result === 'loss'
-        ? 'border-danger-border bg-danger-soft text-danger'
+        ? 'border-danger-border bg-danger-soft text-danger-text'
         : 'border-line bg-track text-ink-soft';
   const resultLabel =
     game.result === 'win' ? 'V' : game.result === 'loss' ? 'D' : 'N';
@@ -790,7 +790,7 @@ function GameRow({
             <button
               onClick={onRevise}
               title="Session exercice sur la position du coup manqué"
-              className="rounded-full border border-accent-soft-border bg-accent-soft px-2.5 py-1 text-[12px] font-semibold text-accent-soft-text transition hover:brightness-[0.97]"
+              className="rounded-full border border-accent-soft-border bg-accent-soft px-2.5 py-1 text-[12px] font-semibold text-accent-soft-text transition hover:brightness-[0.98]"
             >
               Réviser ce coup
             </button>
@@ -799,7 +799,7 @@ function GameRow({
             <button
               onClick={onAddLine}
               title="Créer une variante avec le coup adverse et ouvrir l'éditeur dessus"
-              className="rounded-full border border-line-strong bg-surface-high px-2.5 py-1 text-[12px] font-semibold text-ink transition hover:bg-field"
+              className="rounded-full border border-chip-border bg-chip px-2.5 py-1 text-[12px] font-semibold text-chip-text transition hover:border-chip-hover"
             >
               Ajouter au répertoire
             </button>
@@ -918,7 +918,7 @@ function VerdictChip({ deviation }: { deviation: Deviation }) {
     );
   }
   return (
-    <span className={`${base} border-info-border bg-info-soft text-info`}>
+    <span className={`${base} border-info-border bg-info-soft text-info-text`}>
       Adversaire sort de la théorie {moveNumberLabel(deviation.ply)} (
       <FigurineSan san={deviation.played} />)
     </span>

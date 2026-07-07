@@ -1,61 +1,89 @@
 @import "tailwindcss";
 
 @import "@lichess-org/chessground/assets/chessground.base.css";
-@import "@lichess-org/chessground/assets/chessground.brown.css";
 @import "@lichess-org/chessground/assets/chessground.cburnett.css";
 
 /* ── Design tokens (Tailwind v4 @theme) ─────────────────────────────────────
-   Light "paper" neutral system. The accent is var-driven (see :root below) so
-   it can be switched per-theme with data-accent on <html>. Board colors are
-   NOT used to restyle the board (chessground keeps its brown theme) — the wood
-   frame token is the only board value the UI consumes. */
+   Three runtime themes share one token skeleton; only the values change (see
+   the [data-theme] blocks below). Two surface families:
+     GROUND  — the page background (brand color). Text on it = on-* tokens.
+     SURFACE — cards floating on the ground. Text on them = ink* tokens.
+   The split matters because miton/sombre have a dark ground but miton keeps
+   LIGHT cards: text can never share a token across the two families. */
 @theme {
-  --color-paper: #f7f8f2; /* page background (flat, no gradient) */
-  --color-surface: #fbfcf7; /* cards, panels */
-  --color-surface-high: #ffffff; /* hover / raised */
-  --color-field: #fbfcf6; /* inputs */
-  --color-line: #e6e8dc; /* default borders */
-  --color-line-strong: #d6dacb; /* button borders, focus */
-  --color-ink: #1e2422; /* primary text */
-  --color-ink-soft: #5e5e63; /* secondary text */
-  --color-ink-muted: #929685; /* labels / meta */
-  --color-meta: #7c7a70; /* sub-meta */
-  --color-track: #e8eade; /* progress / scrubber tracks */
+  /* Ground family */
+  --color-on-ink: var(--on-ink); /* headings / logo / active nav, on the ground */
+  --color-on-body: var(--on-body); /* paragraph text on the ground */
+  --color-on-muted: var(--on-muted); /* secondary text on the ground */
+  --color-on-idle: var(--on-idle); /* tertiary: counters, resting nav */
+  --color-on-dash: var(--on-dash-border); /* dashed "+ Ajouter" borders on the ground */
+  --color-ground-overlay: var(--ground-overlay); /* hover fill on the ground */
+  --color-ground-line: var(--ground-overlay-border); /* hairlines on the ground */
+  --color-ground-track: var(--ground-track); /* progress tracks on the ground */
+  --color-seg-off: var(--seg-off); /* inactive segmented-control text on the ground */
+  --color-header: var(--header-bg); /* sticky top bar (translucent) */
+  --color-header-line: var(--header-border);
+  --color-accent-ground: var(--accent-on-ground); /* accent as text/fill ON the ground */
 
-  /* Active accent — resolves to the :root vars, switchable via data-accent. */
+  /* Surface family (cards) */
+  --color-surface: var(--surface);
+  --color-surface-high: var(--surface-high); /* hover / raised */
+  --color-field: var(--field); /* inputs */
+  --color-line: var(--surface-border); /* default card borders */
+  --color-line-strong: var(--line-strong); /* button borders, focus, card hover */
+  --color-footer: var(--footer-bg); /* bottom band inset in a card */
+  --color-ink: var(--ink); /* primary text on a card */
+  --color-ink-soft: var(--ink-soft); /* secondary text on a card */
+  --color-ink-muted: var(--ink-muted); /* labels / meta on a card */
+  --color-meta: var(--ink-faint); /* tertiary / move numbers on a card */
+  --color-track: var(--track); /* progress tracks inside a card */
+  --color-scrim: var(--scrim); /* modal backdrop */
+
+  /* Accent — one action color per theme. */
   --color-accent: var(--accent);
   --color-accent-on: var(--accent-on);
-  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft: var(--accent-soft-bg);
   --color-accent-soft-border: var(--accent-soft-border);
   --color-accent-soft-text: var(--accent-soft-text);
   --color-accent-dot: var(--accent-dot);
 
-  /* Fixed semantic (never swaps with accent). */
-  --color-success: #3e7d54;
+  /* Secondary buttons ("chips"): importer, éditer, exporter, révéler… */
+  --color-chip: var(--chip-bg);
+  --color-chip-border: var(--chip-border);
+  --color-chip-text: var(--chip-text);
+  --color-chip-hover: var(--chip-hover-border);
+
+  /* Semantic full-strength colors live on cards → lightened by the dark theme. */
+  --color-success: var(--pos);
+  --color-danger: var(--neg);
+  --color-info: var(--sem-info);
+  --color-warning: var(--sem-warning);
+
+  /* Semantic soft pills: light bg + dark text in EVERY theme (a light pill on a
+     dark card stays readable — same treatment the spec gives accent-soft). */
   --color-success-soft: #e6f0e4;
   --color-success-border: #cfe0ce;
-  --color-info: #4f6e8f;
+  --color-success-text: #33704a;
   --color-info-soft: #e4ecf3;
   --color-info-border: #cfdce7;
-  --color-warning: #b5852f;
+  --color-info-text: #44607e;
   --color-warning-soft: #f6ecd3;
   --color-warning-border: #e6d2a8;
   --color-warning-text: #9a6f22;
-  --color-danger: #b0493a;
   --color-danger-soft: #f6e9e4;
   --color-danger-border: #e6ccc4;
   --color-danger-text: #a8483a;
 
-  /* Chessboard wood frame (the only board token the UI uses). */
-  --color-board-frame: #c9b488;
+  /* Chessboard frame (squares are styled in the cg-board block below). */
+  --color-board-frame: var(--board-border);
 
-  /* NAG move-quality glyphs. */
-  --color-nag-good: #3e7d54;
-  --color-nag-interesting: #4f6e8f;
-  --color-nag-brilliant: #c79a3a;
-  --color-nag-dubious: #b5852f;
-  --color-nag-mistake: #b0493a;
-  --color-nag-blunder: #8e3a2e;
+  /* NAG move-quality glyphs (on cards → lightened by the dark theme). */
+  --color-nag-good: var(--nag-good);
+  --color-nag-interesting: var(--nag-interesting);
+  --color-nag-brilliant: var(--nag-brilliant);
+  --color-nag-dubious: var(--nag-dubious);
+  --color-nag-mistake: var(--nag-mistake);
+  --color-nag-blunder: var(--nag-blunder);
 
   --font-sans: "Hanken Grotesk", system-ui, sans-serif;
 
@@ -63,64 +91,207 @@
   --radius-btn: 11px;
   --radius-card: 16px;
 
-  --shadow-resting: 0 1px 2px rgba(60, 58, 45, 0.06);
-  --shadow-card: 0 1px 2px rgba(60, 58, 45, 0.05), 0 10px 24px -16px rgba(55, 55, 60, 0.22);
-  --shadow-board: 0 2px 4px rgba(80, 60, 30, 0.1), 0 18px 34px -20px rgba(60, 55, 40, 0.45);
+  --shadow-resting: 0 1px 2px rgba(30, 35, 25, 0.06);
+  --shadow-card: 0 1px 2px rgba(30, 35, 25, 0.06), 0 16px 32px -22px rgba(15, 25, 15, 0.5);
+  --shadow-board: 0 2px 4px rgba(20, 30, 20, 0.12), 0 18px 34px -20px rgba(10, 20, 12, 0.5);
 }
 
-/* ── Accent palettes (runtime-switchable) ───────────────────────────────────
-   Default = Bleu ardoise. Switch: document.documentElement.dataset.accent =
-   'emeraude' | 'orange' | 'violet' | 'magenta'. Remove the attribute for blue.
-   --accent-grad / --accent-glow feed the .btn-accent component only. */
+/* ── Thème par défaut : miton-vertorange (Mi-ton · Échiquier vert & orange) ──
+   Switch: document.documentElement.dataset.theme = 'clair-noyer' |
+   'miton-vertorange' | 'sombre-vertnuit' (src/domain/theme.ts). */
 :root {
-  --accent: #2a66b8;
-  --accent-grad: linear-gradient(180deg, #3373c6, #235ca8);
-  --accent-on: #eef3fb;
-  --accent-soft: #e0eaf6;
-  --accent-soft-border: #c3d6ee;
-  --accent-soft-text: #244f8c;
-  --accent-dot: #3373c6;
-  --accent-glow: rgba(42, 102, 184, 0.28);
+  /* Fond — linear gradient spanning the FULL page height (painted by
+     .app-ground on the root layout div, not by body: body is viewport-sized,
+     so a gradient there would tile on every scroll screen). */
+  --ground: linear-gradient(180deg, #4a7150 0%, #3c6245 45%, #345a3e 100%);
+  --ground-base: #345a3e; /* flat fallback (body, overscroll) = gradient end */
+  --header-bg: rgba(56, 90, 64, 0.86);
+  --header-border: rgba(238, 238, 224, 0.14);
+  --on-ink: #f2efe1;
+  --on-body: #e2e2cf;
+  --on-muted: #a6bda2;
+  --on-idle: #7c9a7e;
+  --on-dash-border: rgba(255, 255, 255, 0.22);
+  --ground-overlay: rgba(255, 255, 255, 0.07);
+  --ground-overlay-border: rgba(255, 255, 255, 0.2);
+  --ground-track: rgba(255, 255, 255, 0.16);
+  --seg-off: rgba(255, 255, 255, 0.66);
+
+  /* Surfaces (cartes claires sur fond vert) */
+  --surface: #f4efe1;
+  --surface-border: #e4dcc7;
+  --surface-hover-border: #d5cab0;
+  --surface-high: #faf6ea;
+  --field: #faf5e7;
+  --line-strong: #d5cab0;
+  --footer-bg: #ede6d4;
+  --ink: #24291f;
+  --ink-soft: #5c5b4c;
+  --ink-muted: #7b7a69;
+  --ink-faint: #a9a791;
+  --track: #e7e0cd;
+  --scrim: rgba(18, 26, 19, 0.5);
+
+  /* Accent — orange */
+  --accent: #bf6528;
+  --accent-grad: linear-gradient(180deg, #cf722d, #b0571e);
+  --accent-on: #fcf2e9;
+  --accent-glow: rgba(191, 101, 40, 0.38);
+  --accent-on-ground: #e89f5c;
+  --accent-soft-bg: #f5e2cc;
+  --accent-soft-border: #eccc9f;
+  --accent-soft-text: #98511c;
+  --accent-dot: #cf722d;
+
+  /* Chips */
+  --chip-bg: #f3eedf;
+  --chip-border: #e0d6be;
+  --chip-text: #4a4636;
+  --chip-hover-border: #d3c6a8;
+
+  /* Sémantique (sur cartes claires) */
+  --pos: #3e7d54;
+  --neg: #b0493a;
+  --sem-info: #4f6e8f;
+  --sem-warning: #b5852f;
+  --nag-good: #3e7d54;
+  --nag-interesting: #4f6e8f;
+  --nag-brilliant: #c79a3a;
+  --nag-dubious: #b5852f;
+  --nag-mistake: #b0493a;
+  --nag-blunder: #8e3a2e;
+
+  /* Échiquier — vert */
+  --board-light: #e7eacb;
+  --board-dark: #688c50;
+  --board-hl: #cbc24a;
+  --board-border: #587a44;
 }
-[data-accent="emeraude"] {
-  --accent: #0f8a61;
-  --accent-grad: linear-gradient(180deg, #149472, #0c7b57);
-  --accent-on: #ecf8f2;
-  --accent-soft: #dcf1e8;
-  --accent-soft-border: #bfe4d5;
-  --accent-soft-text: #0a6b4d;
-  --accent-dot: #149472;
-  --accent-glow: rgba(15, 138, 97, 0.28);
+
+/* ── clair-noyer (Clair · Noyer) — accent vert forêt, plateau bois ── */
+[data-theme="clair-noyer"] {
+  --ground: linear-gradient(180deg, #fbfbf4 0%, #f4f5ec 50%, #edeee3 100%);
+  --ground-base: #edeee3;
+  --header-bg: rgba(245, 246, 238, 0.82);
+  --header-border: #e4e6da;
+  --on-ink: #1e2422;
+  --on-body: #3a3b34;
+  --on-muted: #7c7a70;
+  --on-idle: #aaa79a;
+  --on-dash-border: #cfc8b8;
+  --ground-overlay: rgba(42, 45, 30, 0.05);
+  --ground-overlay-border: #dbdacc;
+  --ground-track: #e2e3d6;
+  --seg-off: #8c8a80;
+
+  --surface: #fcfcf6;
+  --surface-border: #e6e7db;
+  --surface-hover-border: #d6d8c9;
+  --surface-high: #ffffff;
+  --field: #fbfbf4;
+  --line-strong: #d6d8c9;
+  --footer-bg: #f1f1e6;
+  --ink: #1e2422;
+  --ink-soft: #5b5c53;
+  --ink-muted: #7c7a70;
+  --ink-faint: #a7a498;
+  --track: #e8eade;
+  --scrim: rgba(30, 36, 34, 0.4);
+
+  --accent: #3d6a49;
+  --accent-grad: linear-gradient(180deg, #457453, #376042);
+  --accent-on: #f0f6ef;
+  --accent-glow: rgba(61, 106, 73, 0.32);
+  --accent-on-ground: #356043;
+  --accent-soft-bg: #e4eede;
+  --accent-soft-border: #cbe0c5;
+  --accent-soft-text: #356043;
+  --accent-dot: #457453;
+
+  --chip-bg: #fcfcf6;
+  --chip-border: #d9dacc;
+  --chip-text: #34343a;
+  --chip-hover-border: #c6c4b4;
+
+  --pos: #3e7d54;
+  --neg: #b0493a;
+  --sem-info: #4f6e8f;
+  --sem-warning: #b5852f;
+  --nag-good: #3e7d54;
+  --nag-interesting: #4f6e8f;
+  --nag-brilliant: #c79a3a;
+  --nag-dubious: #b5852f;
+  --nag-mistake: #b0493a;
+  --nag-blunder: #8e3a2e;
+
+  --board-light: #ecd8ae;
+  --board-dark: #b0895a;
+  --board-hl: #d8c24a;
+  --board-border: #977649;
 }
-[data-accent="orange"] {
-  --accent: #c26a22;
-  --accent-grad: linear-gradient(180deg, #d0762b, #b05e1b);
-  --accent-on: #fcf3ea;
-  --accent-soft: #f6e7d6;
-  --accent-soft-border: #ecd2b4;
-  --accent-soft-text: #9c5418;
-  --accent-dot: #d0762b;
-  --accent-glow: rgba(194, 106, 34, 0.28);
-}
-[data-accent="violet"] {
-  --accent: #6a45c0;
-  --accent-grad: linear-gradient(180deg, #7752ce, #5c39ae);
-  --accent-on: #f2eefb;
-  --accent-soft: #e9e2f6;
-  --accent-soft-border: #d5c8ee;
-  --accent-soft-text: #553597;
-  --accent-dot: #7752ce;
-  --accent-glow: rgba(106, 69, 192, 0.28);
-}
-[data-accent="magenta"] {
-  --accent: #a83e73;
-  --accent-grad: linear-gradient(180deg, #b54b80, #963063);
-  --accent-on: #fbeef4;
-  --accent-soft: #f4e2ec;
-  --accent-soft-border: #e8c7d9;
-  --accent-soft-text: #8a2f5c;
-  --accent-dot: #b54b80;
-  --accent-glow: rgba(168, 62, 115, 0.28);
+
+/* ── sombre-vertnuit (Sombre · Vert nuit) — couple sombre du mi-ton :
+   même accent orange, même plateau vert, cartes sombres. ── */
+[data-theme="sombre-vertnuit"] {
+  --ground: linear-gradient(180deg, #223528 0%, #182620 50%, #121e17 100%);
+  --ground-base: #121e17;
+  --header-bg: rgba(23, 36, 27, 0.82);
+  --header-border: rgba(255, 255, 255, 0.08);
+  --on-ink: #eef1ea;
+  --on-body: #c7cdc3;
+  --on-muted: #949a90;
+  --on-idle: #6a7168;
+  --on-dash-border: rgba(255, 255, 255, 0.2);
+  --ground-overlay: rgba(255, 255, 255, 0.06);
+  --ground-overlay-border: rgba(255, 255, 255, 0.14);
+  --ground-track: rgba(255, 255, 255, 0.13);
+  --seg-off: rgba(255, 255, 255, 0.6);
+
+  --surface: #26302a;
+  --surface-border: rgba(255, 255, 255, 0.09);
+  --surface-hover-border: rgba(255, 255, 255, 0.2);
+  --surface-high: #2c3731;
+  --field: #212b25;
+  --line-strong: rgba(255, 255, 255, 0.18);
+  --footer-bg: #222b25;
+  --ink: #ecefe8;
+  --ink-soft: #c2c9bf;
+  --ink-muted: #9ea69c;
+  --ink-faint: #727a70;
+  --track: rgba(255, 255, 255, 0.1);
+  --scrim: rgba(5, 10, 7, 0.6);
+
+  --accent: #bf6528;
+  --accent-grad: linear-gradient(180deg, #cf722d, #b0571e);
+  --accent-on: #fcf2e9;
+  --accent-glow: rgba(191, 101, 40, 0.38);
+  --accent-on-ground: #e89f5c;
+  --accent-soft-bg: #f5e2cc;
+  --accent-soft-border: #eccc9f;
+  --accent-soft-text: #98511c;
+  --accent-dot: #cf722d;
+
+  --chip-bg: rgba(255, 255, 255, 0.055);
+  --chip-border: rgba(255, 255, 255, 0.14);
+  --chip-text: #dce0d8;
+  --chip-hover-border: rgba(255, 255, 255, 0.26);
+
+  /* Sémantique éclaircie pour cartes sombres */
+  --pos: #6fb98a;
+  --neg: #e28c7b;
+  --sem-info: #8faecb;
+  --sem-warning: #d3a554;
+  --nag-good: #6fb98a;
+  --nag-interesting: #8faecb;
+  --nag-brilliant: #ddb765;
+  --nag-dubious: #d3a554;
+  --nag-mistake: #e28c7b;
+  --nag-blunder: #d0745f;
+
+  --board-light: #e7eacb;
+  --board-dark: #688c50;
+  --board-hl: #cbc24a;
+  --board-border: #587a44;
 }
 
 html,
@@ -130,11 +301,84 @@ body,
 }
 
 body {
-  background-color: var(--color-paper);
-  color: var(--color-ink);
+  background-color: var(--ground-base);
+  color: var(--on-body);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Page-ground gradient: lives on the root layout div (min-h-screen, grows
+   with content) so it spans the real page height in one sweep. */
+.app-ground {
+  background: var(--ground);
+}
+
+/* ── Chessboard squares (token-driven, replaces chessground.brown.css) ──────
+   The checkerboard is a repeating conic gradient: dark quadrants at 0–90°
+   (top-right) and 180–270° (bottom-left) of each 2×2-square tile, so a8 and
+   h1 come out light. Interaction colors (dests, selected, check) keep the
+   lichess values — they read fine on both the green and the wood board. */
+cg-board {
+  background-color: var(--board-light);
+  background-image: repeating-conic-gradient(var(--board-dark) 0 90deg, #0000 0 180deg);
+  background-size: 25% 25%;
+}
+cg-board square.move-dest {
+  background: radial-gradient(rgba(20, 85, 30, 0.5) 22%, #208530 0, rgba(0, 0, 0, 0.3) 0, rgba(0, 0, 0, 0) 0);
+}
+cg-board square.premove-dest {
+  background: radial-gradient(rgba(20, 30, 85, 0.5) 22%, #203085 0, rgba(0, 0, 0, 0.3) 0, rgba(0, 0, 0, 0) 0);
+}
+cg-board square.oc.move-dest {
+  background: radial-gradient(transparent 0%, transparent 80%, rgba(20, 85, 0, 0.3) 80%);
+}
+cg-board square.oc.premove-dest {
+  background: radial-gradient(transparent 0%, transparent 80%, rgba(20, 30, 85, 0.2) 80%);
+}
+cg-board square.move-dest:hover,
+cg-board square.move-dest.hover {
+  background: rgba(20, 85, 30, 0.3);
+}
+cg-board square.premove-dest:hover,
+cg-board square.premove-dest.hover {
+  background: rgba(20, 30, 85, 0.2);
+}
+cg-board square.last-move {
+  background-color: color-mix(in srgb, var(--board-hl) 55%, transparent);
+}
+cg-board square.selected {
+  background-color: rgba(20, 85, 30, 0.5);
+}
+cg-board square.check {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 0, 0, 1) 0%,
+    rgba(231, 0, 0, 1) 25%,
+    rgba(169, 0, 0, 0) 89%,
+    rgba(158, 0, 0, 0) 100%
+  );
+}
+cg-board square.current-premove {
+  background-color: rgba(20, 30, 85, 0.5);
+}
+
+/* Coordinate labels contrast with the square they sit on. */
+.orientation-white .ranks :nth-child(odd),
+.orientation-white .files :nth-child(even),
+.orientation-black .ranks :nth-child(even),
+.orientation-black .files :nth-child(odd),
+coords.squares:nth-of-type(odd) :nth-child(even),
+coords.squares:nth-of-type(even) :nth-child(odd) {
+  color: var(--board-dark);
+}
+.orientation-white .ranks :nth-child(even),
+.orientation-white .files :nth-child(odd),
+.orientation-black .ranks :nth-child(odd),
+.orientation-black .files :nth-child(even),
+coords.squares:nth-of-type(odd) :nth-child(odd),
+coords.squares:nth-of-type(even) :nth-child(even) {
+  color: var(--board-light);
 }
 
 /* Tailwind v4 no longer defaults buttons to the pointer cursor (v3 did).
@@ -149,12 +393,12 @@ button:not(:disabled),
   font-variant-numeric: tabular-nums;
 }
 
-/* Slim, paper-toned scrollbar for the editor scoresheet. */
+/* Slim, surface-toned scrollbar for the editor scoresheet. */
 .scoresheet-scroll::-webkit-scrollbar {
   width: 8px;
 }
 .scoresheet-scroll::-webkit-scrollbar-thumb {
-  background: var(--color-line-strong);
+  background: var(--line-strong);
   border-radius: 999px;
 }
 .scoresheet-scroll::-webkit-scrollbar-track {

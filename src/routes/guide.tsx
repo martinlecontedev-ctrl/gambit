@@ -21,12 +21,12 @@ function Guide() {
     <main className="mx-auto max-w-260 px-10 pb-22.5 pt-8.5">
       <Link
         to="/"
-        className="mb-3.5 inline-flex items-center gap-2 text-[14.5px] font-semibold text-meta transition hover:text-ink"
+        className="mb-3.5 inline-flex items-center gap-2 text-[14.5px] font-semibold text-on-muted transition hover:text-on-ink"
       >
         ← Retour
       </Link>
-      <h1 className="text-[40px] font-extrabold tracking-[-0.02em]">Guide</h1>
-      <p className="mt-2.5 text-[15.5px] text-meta">
+      <h1 className="text-[40px] font-extrabold tracking-[-0.02em] text-on-ink">Guide</h1>
+      <p className="mt-2.5 text-[15.5px] text-on-muted">
         Les comportements non évidents, en bref. À compléter au fil de l'eau.
       </p>
 
@@ -36,7 +36,7 @@ function Guide() {
             <a
               key={t.id}
               href={`#${t.id}`}
-              className="rounded-lg border-l-2 border-line px-2.5 py-1.75 text-[13.5px] font-semibold text-ink-soft transition hover:border-accent hover:bg-surface hover:text-accent"
+              className="rounded-lg border-l-2 border-ground-line px-2.5 py-1.75 text-[13.5px] font-semibold text-on-idle transition hover:border-accent-ground hover:bg-ground-overlay hover:text-accent-ground"
             >
               {t.label}
             </a>
@@ -316,10 +316,10 @@ function Section({
 }) {
   return (
     <section id={id} className="scroll-mt-22">
-      <div className="mb-3.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-accent-soft-text">
+      <div className="mb-3.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-accent-ground">
         {title}
       </div>
-      <ul className="flex flex-col gap-3.5 text-base leading-[1.65] text-ink">{children}</ul>
+      <ul className="flex flex-col gap-3.5 text-base leading-[1.65] text-on-body">{children}</ul>
     </section>
   );
 }
@@ -338,9 +338,9 @@ function ModPill({
   children: React.ReactNode;
 }) {
   const tones = {
-    success: 'border-success-border bg-success-soft text-success',
-    danger: 'border-danger-border bg-danger-soft text-danger',
-    info: 'border-info-border bg-info-soft text-info',
+    success: 'border-success-border bg-success-soft text-success-text',
+    danger: 'border-danger-border bg-danger-soft text-danger-text',
+    info: 'border-info-border bg-info-soft text-info-text',
     warning: 'border-warning-border bg-warning-soft text-warning-text',
   } as const;
   return (
@@ -363,16 +363,22 @@ function NagRow({
   label: string;
 }) {
   return (
-    <li className="flex items-baseline gap-3">
-      <span className={`w-7 shrink-0 text-lg font-bold ${color}`}>{symbol}</span>
-      <span className="text-ink">{label}</span>
+    <li className="flex items-center gap-3">
+      {/* NAG tokens are card-family colors: give the glyph a surface swatch so
+          it stays readable on the (possibly dark green) ground. */}
+      <span
+        className={`flex w-9 shrink-0 items-center justify-center rounded-md border border-line bg-surface py-0.5 text-lg font-bold ${color}`}
+      >
+        {symbol}
+      </span>
+      <span className="text-on-body">{label}</span>
     </li>
   );
 }
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="rounded-md border border-line-strong bg-field px-1.5 py-0.5 text-[13px] font-semibold text-ink-soft">
+    <kbd className="rounded-md border border-chip-border bg-chip px-1.5 py-0.5 text-[13px] font-semibold text-chip-text">
       {children}
     </kbd>
   );
@@ -380,7 +386,7 @@ function Kbd({ children }: { children: React.ReactNode }) {
 
 function Code({ children }: { children: React.ReactNode }) {
   return (
-    <code className="rounded border border-line bg-track px-1.5 py-0.5 text-[13px] text-ink-soft">
+    <code className="rounded border border-chip-border bg-chip px-1.5 py-0.5 text-[13px] text-chip-text">
       {children}
     </code>
   );

@@ -39,15 +39,15 @@ export function RecognitionBar({
   return (
     <div className="flex items-center gap-2.5">
       <p
-        className={`min-w-0 flex-1 truncate text-[13.5px] text-meta ${
+        className={`min-w-0 flex-1 truncate text-[13.5px] text-on-muted ${
           recognized ? '' : 'invisible'
         }`}
         aria-hidden={recognized ? undefined : true}
       >
-        <span className="mr-2 rounded-md border border-line-strong bg-track px-2 py-0.75 text-[11px] font-bold tracking-[0.06em] text-ink-soft">
+        <span className="mr-2 rounded-md border border-ground-line bg-ground-overlay px-2 py-0.75 text-[11px] font-bold tracking-[0.06em] text-on-muted">
           {recognized?.eco ?? 'A00'}
         </span>
-        <span className="italic">{recognized?.name ?? ' '}</span>
+        <span className="italic text-on-body">{recognized?.name ?? ' '}</span>
       </p>
       <YoutubeSearchButton opening={recognized} color={color} />
     </div>
@@ -68,7 +68,7 @@ function YoutubeSearchButton({
   color: Color;
 }) {
   const baseClass =
-    'inline-flex shrink-0 items-center gap-1.5 rounded-[10px] border border-line-strong bg-surface-high px-3 py-1 text-[13px] font-semibold transition';
+    'inline-flex shrink-0 items-center gap-1.5 rounded-[10px] border border-chip-border bg-chip px-3 py-1 text-[13px] font-semibold transition';
   const icon = (
     <svg
       viewBox="0 0 24 24"
@@ -82,7 +82,7 @@ function YoutubeSearchButton({
   if (!opening) {
     return (
       <span
-        className={`${baseClass} cursor-not-allowed text-ink-muted`}
+        className={`${baseClass} cursor-not-allowed text-on-idle`}
         aria-disabled="true"
         title="Pas d'ouverture reconnue"
       >
@@ -97,7 +97,7 @@ function YoutubeSearchButton({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className={`${baseClass} text-danger hover:bg-field`}
+      className={`${baseClass} text-danger hover:border-chip-hover`}
       title={`Rechercher "${query}" sur YouTube`}
     >
       {icon} YouTube

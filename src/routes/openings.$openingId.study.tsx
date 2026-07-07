@@ -235,13 +235,13 @@ function StudyImpl({
 function NothingDue({ openingId }: { openingId: string }) {
   return (
     <main className="mx-auto max-w-md px-10 py-16 text-center">
-      <p className="text-2xl font-bold">Tout est à jour.</p>
-      <p className="mt-2 text-sm text-meta">Rien à réviser pour le moment.</p>
+      <p className="text-2xl font-bold text-on-ink">Tout est à jour.</p>
+      <p className="mt-2 text-sm text-on-muted">Rien à réviser pour le moment.</p>
       <div className="mt-8 flex justify-center gap-2.5">
         <Link
           to="/openings/$openingId"
           params={{ openingId }}
-          className="flex h-11 items-center rounded-btn border border-line-strong bg-surface-high px-4.5 text-sm font-semibold text-ink transition hover:bg-field"
+          className="flex h-11 items-center rounded-btn border border-chip-border bg-chip px-4.5 text-sm font-semibold text-chip-text transition hover:border-chip-hover"
         >
           Ouvrir
         </Link>
@@ -420,18 +420,18 @@ function ReviewSession({
       <div className="mb-5 flex items-center justify-between gap-4">
         <Link
           to="/"
-          className="inline-flex items-center gap-2 text-[14.5px] font-semibold text-meta transition hover:text-ink"
+          className="inline-flex items-center gap-2 text-[14.5px] font-semibold text-on-muted transition hover:text-on-ink"
         >
           ← Sortir
         </Link>
         <div className="flex w-85 max-w-full items-center gap-3">
-          <div className="h-1.75 flex-1 overflow-hidden rounded-full bg-track">
+          <div className="h-1.75 flex-1 overflow-hidden rounded-full bg-ground-track">
             <div
-              className="h-full rounded-full bg-accent transition-all"
+              className="h-full rounded-full bg-accent-ground transition-all"
               style={{ width: `${sessionPct}%` }}
             />
           </div>
-          <span className="whitespace-nowrap text-[13px] font-semibold text-ink-muted tnum">
+          <span className="whitespace-nowrap text-[13px] font-semibold text-on-muted tnum">
             {counter}
           </span>
         </div>
@@ -465,7 +465,7 @@ function ReviewSession({
                     <p className="text-base font-bold text-ink">Jouez le coup attendu</p>
                     <button
                       onClick={() => setPhase('revealed')}
-                      className="h-10.5 shrink-0 rounded-[10px] border border-line-strong bg-surface-high px-4.5 text-sm font-semibold text-ink transition hover:bg-field"
+                      className="h-10.5 shrink-0 rounded-[10px] border border-chip-border bg-chip px-4.5 text-sm font-semibold text-chip-text transition hover:border-chip-hover"
                     >
                       Révéler
                     </button>
@@ -530,8 +530,8 @@ function ReviewSession({
           ) : isExercise ? (
             <ExerciseDone opening={opening} cards={queue} />
           ) : (
-            <div className="flex w-full max-w-140 flex-col items-center rounded-[14px] border border-line bg-surface px-6 py-14 text-center shadow-card">
-              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-success-soft text-2xl text-success">
+            <div className="flex w-full max-w-140 flex-col items-center rounded-[14px] border border-line bg-surface px-6 py-14 text-center text-ink shadow-card">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-success-soft text-2xl text-success-text">
                 ✓
               </span>
               <p className="mt-4 text-lg font-bold">
@@ -564,7 +564,7 @@ function ReviewSession({
                 ) : null}
                 <Link
                   to="/"
-                  className="flex h-11 items-center rounded-btn border border-line-strong bg-surface-high px-5 text-sm font-semibold text-ink transition hover:bg-field"
+                  className="flex h-11 items-center rounded-btn border border-chip-border bg-chip px-5 text-sm font-semibold text-chip-text transition hover:border-chip-hover"
                 >
                   Retour
                 </Link>
@@ -574,7 +574,7 @@ function ReviewSession({
         </section>
 
         <aside className="flex flex-col gap-4">
-          <div className="rounded-card border border-line bg-surface p-5.5 shadow-card">
+          <div className="rounded-card border border-line bg-surface p-5.5 text-ink shadow-card">
             <div className="text-[21px] font-extrabold tracking-[-0.01em]">
               {opening.name}
             </div>
@@ -638,7 +638,7 @@ function OpeningsFile({
 }) {
   return (
     <div className="mb-5 flex items-center gap-2 overflow-x-auto pb-1">
-      <span className="shrink-0 pr-1 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
+      <span className="shrink-0 pr-1 text-[11px] font-bold uppercase tracking-[0.14em] text-on-muted">
         À réviser
       </span>
       {items.map(o => {
@@ -652,7 +652,7 @@ function OpeningsFile({
             className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition ${
               active
                 ? 'border-accent bg-accent-soft text-accent-soft-text'
-                : 'border-line-strong bg-surface text-ink-soft hover:bg-surface-high'
+                : 'border-chip-border bg-chip text-chip-text hover:border-chip-hover'
             }`}
           >
             {o.name}
@@ -685,7 +685,7 @@ function ChapterRail({
 }) {
   return (
     <aside className="flex flex-col gap-1.5">
-      <h2 className="mx-1 mb-3.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-ink-muted">
+      <h2 className="mx-1 mb-3.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-on-muted">
         Chapitres
       </h2>
       {chapters.map(c => {
@@ -699,7 +699,7 @@ function ChapterRail({
             className={`flex w-full items-center gap-2.5 rounded-xl border px-3.5 py-3 text-left text-sm font-medium transition ${
               active
                 ? 'border-line bg-surface text-ink shadow-resting'
-                : 'border-transparent text-ink-soft hover:bg-track hover:text-ink'
+                : 'border-transparent text-on-body hover:bg-ground-overlay hover:text-on-ink'
             }`}
           >
             <span
@@ -763,8 +763,8 @@ function GradeButton({
 }) {
   const tones = {
     warning: 'border-warning-border bg-warning-soft text-warning-text',
-    success: 'border-success-border bg-success-soft text-success',
-    info: 'border-info-border bg-info-soft text-info',
+    success: 'border-success-border bg-success-soft text-success-text',
+    info: 'border-info-border bg-info-soft text-info-text',
   } as const;
   return (
     <button
@@ -807,8 +807,8 @@ function ExerciseDone({ opening, cards }: { opening: Opening; cards: Card[] }) {
   };
 
   return (
-    <div className="flex w-full max-w-140 flex-col items-center rounded-[14px] border border-line bg-surface px-6 py-14 text-center shadow-card">
-      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-success-soft text-2xl text-success">
+    <div className="flex w-full max-w-140 flex-col items-center rounded-[14px] border border-line bg-surface px-6 py-14 text-center text-ink shadow-card">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-success-soft text-2xl text-success-text">
         ✓
       </span>
       <p className="mt-4 text-lg font-bold">Exercice terminé</p>
@@ -836,7 +836,7 @@ function ExerciseDone({ opening, cards }: { opening: Opening; cards: Card[] }) {
         <Link
           to="/openings/$openingId"
           params={{ openingId: opening.id }}
-          className="flex h-11 items-center rounded-btn border border-line-strong bg-surface-high px-5 text-sm font-semibold text-ink transition hover:bg-field"
+          className="flex h-11 items-center rounded-btn border border-chip-border bg-chip px-5 text-sm font-semibold text-chip-text transition hover:border-chip-hover"
         >
           {reintegrated ? "Retour à l'ouverture" : 'Non merci'}
         </Link>

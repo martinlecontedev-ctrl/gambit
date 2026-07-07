@@ -110,7 +110,7 @@ export function ExplorerPanel({
   }, [enabled, fen, source, account]);
 
   return (
-    <div className="rounded-[14px] border border-line bg-surface p-4 shadow-resting">
+    <div className="rounded-[14px] border border-line bg-surface p-4 text-ink shadow-resting">
       <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
         Explorateur
       </div>
@@ -125,7 +125,7 @@ export function ExplorerPanel({
               className={`rounded-full border px-2.5 py-0.5 text-[11.5px] font-semibold transition ${
                 source === s.id
                   ? 'border-accent-soft-border bg-accent-soft text-accent-soft-text'
-                  : 'border-line-strong text-ink-muted hover:bg-track hover:text-ink'
+                  : 'border-chip-border bg-chip text-chip-text hover:border-chip-hover'
               }`}
             >
               {s.label}
@@ -140,8 +140,8 @@ export function ExplorerPanel({
           }
           className={`rounded-full border px-2.5 py-0.5 text-[11.5px] font-semibold transition ${
             enabled
-              ? 'border-info-border bg-info-soft text-info'
-              : 'border-line-strong text-ink-muted hover:bg-track hover:text-ink'
+              ? 'border-info-border bg-info-soft text-info-text'
+              : 'border-chip-border bg-chip text-chip-text hover:border-chip-hover'
           }`}
         >
           {enabled ? 'ON' : 'OFF'}
@@ -244,7 +244,7 @@ function ExplorerRow({
           {dp >= 18 ? `${Math.round(dp)}` : ''}
         </div>
         <div
-          className="flex items-center justify-center bg-ink text-paper"
+          className="flex items-center justify-center bg-ink text-surface"
           style={{ width: `${bp}%` }}
         >
           {bp >= 18 ? `${Math.round(bp)}` : ''}

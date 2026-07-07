@@ -533,12 +533,12 @@ function EditOpeningInner({
         <Link
           to="/openings/$openingId"
           params={{ openingId: opening.id }}
-          className="inline-flex items-center gap-2 text-[14.5px] font-semibold text-meta transition hover:text-ink"
+          className="inline-flex items-center gap-2 text-[14.5px] font-semibold text-on-muted transition hover:text-on-ink"
         >
           ← Retour
         </Link>
         <div className="flex min-w-0 items-center gap-5">
-          <h1 className="min-w-0 truncate text-[28px] font-extrabold tracking-[-0.02em]">
+          <h1 className="min-w-0 truncate text-[28px] font-extrabold tracking-[-0.02em] text-on-ink">
             {draft.name}
           </h1>
           {sortedChapters.length > 0 && (
@@ -558,7 +558,7 @@ function EditOpeningInner({
         </div>
         <div className="flex items-center justify-end gap-3">
           {dirty && (
-            <span className="whitespace-nowrap text-[12.5px] font-semibold text-warning-text">
+            <span className="whitespace-nowrap rounded-full border border-warning-border bg-warning-soft px-2.5 py-1 text-[12px] font-semibold text-warning-text">
               Non enregistré
             </span>
           )}
@@ -568,7 +568,7 @@ function EditOpeningInner({
             className={
               dirty
                 ? 'btn-accent flex h-10 items-center rounded-[10px] px-5 text-[13.5px] font-semibold'
-                : 'flex h-10 cursor-default items-center rounded-[10px] border border-line-strong bg-surface px-5 text-[13.5px] font-semibold text-ink-muted'
+                : 'flex h-10 cursor-default items-center rounded-[10px] border border-ground-line bg-ground-overlay px-5 text-[13.5px] font-semibold text-on-muted'
             }
           >
             {dirty ? 'Enregistrer' : 'Enregistré ✓'}
@@ -625,7 +625,7 @@ function EditOpeningInner({
       </section>
 
       <aside className="flex flex-col gap-4">
-        <div className="overflow-hidden rounded-[14px] border border-line bg-surface shadow-resting">
+        <div className="overflow-hidden rounded-[14px] border border-line bg-surface text-ink shadow-resting">
           <div className="px-4 pt-4">
             <div className="mb-3 flex items-baseline justify-between gap-2">
               <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
@@ -735,9 +735,9 @@ function EvalBar({
   }, [result, currentFen, chess]);
 
   return (
-    <div className="absolute -left-5 top-0 h-full w-2.5 overflow-hidden rounded-sm bg-ink ring-1 ring-line-strong">
+    <div className="absolute -left-5 top-0 h-full w-2.5 overflow-hidden rounded-sm bg-black ring-1 ring-ground-line">
       <div
-        className="absolute inset-x-0 bottom-0 bg-surface-high transition-[height] duration-500 ease-out"
+        className="absolute inset-x-0 bottom-0 bg-white transition-[height] duration-500 ease-out"
         style={{ height: `${whiteShare * 100}%` }}
       />
     </div>
@@ -767,8 +767,8 @@ function EngineToggle({
       }
       className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[13px] font-semibold transition hover:brightness-[0.97] ${
         enabled
-          ? 'border-info-border bg-info-soft text-info'
-          : 'border-line-strong bg-surface text-ink-muted hover:bg-surface-high'
+          ? 'border-info-border bg-info-soft text-info-text'
+          : 'border-ground-line bg-ground-overlay text-seg-off'
       }`}
     >
       <span>Engine</span>
@@ -778,12 +778,12 @@ function EngineToggle({
             ? isThinking
               ? 'animate-pulse bg-success ring-[3px] ring-success/20'
               : 'bg-success ring-[3px] ring-success/20'
-            : 'bg-line-strong'
+            : 'bg-on-idle'
         }`}
       />
       {enabled && evalText !== null && (
         <span
-          className={`text-[13px] tnum ${positive ? 'text-success' : 'text-danger'}`}
+          className={`text-[13px] tnum ${positive ? 'text-success-text' : 'text-danger-text'}`}
         >
           {evalText}
         </span>

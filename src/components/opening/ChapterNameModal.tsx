@@ -46,7 +46,7 @@ export function ChapterNameModal({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg px-4 py-2 text-sm text-ink-soft hover:text-ink"
+            className="rounded-lg border border-chip-border bg-chip px-4 py-2 text-sm text-chip-text hover:border-chip-hover"
           >
             Annuler
           </button>

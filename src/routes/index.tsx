@@ -129,10 +129,10 @@ function Home() {
     <main className="mx-auto max-w-310 px-10 pt-10 pb-20">
       <div className="mb-6.5 flex flex-wrap items-end justify-between gap-6">
         <div>
-          <h1 className="text-[42px] font-extrabold leading-none tracking-[-0.02em]">
+          <h1 className="text-[42px] font-extrabold leading-none tracking-[-0.02em] text-on-ink">
             Ouvertures
           </h1>
-          <p className="mt-2 text-[15px] text-meta">
+          <p className="mt-2 text-[15px] text-on-muted">
             {openings.length === 0
               ? 'Créez votre première ouverture pour commencer.'
               : `${openings.length} ouverture${openings.length > 1 ? 's' : ''} · ${folders.length} dossier${folders.length > 1 ? 's' : ''}`}
@@ -141,7 +141,7 @@ function Home() {
         <div className="flex gap-3">
           <button
             onClick={() => setImportOpen(true)}
-            className="h-11 rounded-btn border border-line-strong bg-surface px-4.5 text-[14.5px] font-semibold text-ink shadow-resting transition hover:bg-surface-high"
+            className="h-11 rounded-btn border border-chip-border bg-chip px-4.5 text-[14.5px] font-semibold text-chip-text shadow-resting transition hover:border-chip-hover"
           >
             Importer
           </button>
@@ -220,8 +220,8 @@ function ReviewBanner({
 
   if (totalDue === 0) {
     return (
-      <div className="flex items-center gap-4 rounded-[18px] border border-line bg-surface px-6 py-5.5 shadow-card">
-        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-success-soft text-2xl text-success">
+      <div className="flex items-center gap-4 rounded-[18px] border border-line bg-surface px-6 py-5.5 text-ink shadow-card">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-success-soft text-2xl text-success-text">
           ✓
         </span>
         <div>
@@ -243,7 +243,7 @@ function ReviewBanner({
       : `${names.slice(0, 3).join(', ')} +${names.length - 3}`;
 
   return (
-    <div className="rounded-[18px] border border-line bg-surface px-6 py-5.5 shadow-card">
+    <div className="rounded-[18px] border border-line bg-surface px-6 py-5.5 text-ink shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-5">
           <span className="text-[54px] font-extrabold leading-[0.9] tracking-[-0.03em] text-accent tnum">
@@ -295,7 +295,8 @@ const HEAT_GAP = 3;
 const HEAT_PITCH = HEAT_CELL + HEAT_GAP;
 
 /** Cell backgrounds mix the live accent into the surface, so the heatmap
- * follows the `data-accent` palette like every other accent surface. */
+ * follows the `data-theme` palette like every other accent surface. The cells
+ * live inside a card, so they mix against the card surface, not the ground. */
 const HEAT_BG = [
   'var(--color-track)',
   'color-mix(in srgb, var(--accent) 22%, var(--color-surface))',
@@ -360,7 +361,7 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
   );
 
   return (
-    <div className="flex items-stretch gap-8 rounded-[18px] border border-line bg-surface px-6 py-5.5 shadow-card">
+    <div className="flex items-stretch gap-8 rounded-[18px] border border-line bg-surface px-6 py-5.5 text-ink shadow-card">
       <div className="w-64 shrink-0 border-r border-line pr-8">
         <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
           Série
@@ -379,7 +380,7 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
         </div>
         <div className="mt-3.5">
           {streak.todayDone ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-success-border bg-success-soft px-2.75 py-1.25 text-[12.5px] font-semibold text-success">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-success-border bg-success-soft px-2.75 py-1.25 text-[12.5px] font-semibold text-success-text">
               ✓ Validée aujourd'hui
             </span>
           ) : (
@@ -539,7 +540,7 @@ function FolderSidebar({
 
   return (
     <aside className="flex flex-col gap-1">
-      <h2 className="mx-1 mb-3.5 mt-1.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-ink-muted">
+      <h2 className="mx-1 mb-3.5 mt-1.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-on-muted">
         Dossiers
       </h2>
       <SidebarItem
@@ -599,13 +600,13 @@ function FolderSidebar({
               }
             }}
             placeholder="Nom du dossier"
-            className="w-full rounded-input border border-line-strong bg-field px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent-soft-border focus:outline-none"
+            className="w-full rounded-input border border-ground-line bg-ground-overlay px-3 py-2 text-sm text-on-ink placeholder:text-on-muted focus:border-accent-ground focus:outline-none"
           />
         </div>
       ) : (
         <button
           onClick={() => setCreating(true)}
-          className="mt-3.5 flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[13.5px] font-semibold text-meta transition hover:bg-track hover:text-ink"
+          className="mt-3.5 flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[13.5px] font-semibold text-on-muted transition hover:bg-ground-overlay hover:text-on-ink"
         >
           + Nouveau dossier
         </button>
@@ -674,10 +675,10 @@ function SidebarItem({
       {...dropHandlers}
       className={`group relative rounded-[10px] border transition ${
         hovered
-          ? 'border-accent-soft-border bg-accent-soft ring-1 ring-inset ring-accent-soft-border'
+          ? 'border-accent-ground bg-ground-overlay ring-1 ring-inset ring-accent-ground'
           : active
-            ? 'border-line bg-surface shadow-resting'
-            : 'border-transparent hover:bg-track'
+            ? 'border-ground-line bg-ground-overlay shadow-resting'
+            : 'border-transparent hover:bg-ground-overlay'
       }`}
     >
       {renaming ? (
@@ -690,13 +691,13 @@ function SidebarItem({
             if (e.key === 'Enter') onRenameSubmit?.();
             if (e.key === 'Escape') onRenameCancel?.();
           }}
-          className="w-full rounded-[10px] bg-transparent px-3 py-2.5 text-[14.5px] text-ink focus:outline-none"
+          className="w-full rounded-[10px] bg-transparent px-3 py-2.5 text-[14.5px] text-on-ink focus:outline-none"
         />
       ) : (
         <button
           onClick={onClick}
           className={`flex w-full items-center justify-between gap-2 rounded-[10px] px-3 py-2.5 text-left text-[14.5px] font-medium transition ${
-            active ? 'text-ink' : 'text-ink-soft hover:text-ink'
+            active ? 'text-on-ink' : 'text-on-body hover:text-on-ink'
           }`}
         >
           <span className="truncate">{label}</span>
@@ -706,7 +707,7 @@ function SidebarItem({
                 {due}
               </span>
             )}
-            <span className="text-xs text-ink-muted tnum">{count}</span>
+            <span className="text-xs text-on-idle tnum">{count}</span>
           </span>
         </button>
       )}
@@ -731,7 +732,7 @@ function SidebarItem({
                 onDelete();
               }}
               title="Supprimer le dossier"
-              className="rounded p-1 text-xs text-ink-soft transition hover:bg-danger-soft hover:text-danger"
+              className="rounded p-1 text-xs text-ink-soft transition hover:bg-danger-soft hover:text-danger-text"
             >
               ✕
             </button>
@@ -766,7 +767,7 @@ function OpeningCard({
         onDragStart();
       }}
       onDragEnd={onDragEnd}
-      className={`cursor-grab rounded-card border border-line bg-surface p-5 shadow-card transition hover:border-line-strong active:cursor-grabbing ${
+      className={`cursor-grab rounded-card border border-line bg-surface p-5 text-ink shadow-card transition hover:border-line-strong active:cursor-grabbing ${
         isDragged ? 'opacity-40' : ''
       }`}
     >
@@ -790,7 +791,7 @@ function OpeningCard({
           }}
           title="Supprimer cette ouverture"
           aria-label="Supprimer cette ouverture"
-          className="rounded p-1 text-lg leading-none text-ink-muted transition hover:bg-danger-soft hover:text-danger"
+          className="rounded p-1 text-lg leading-none text-ink-muted transition hover:bg-danger-soft hover:text-danger-text"
         >
           ✕
         </button>
@@ -856,7 +857,7 @@ function EmptyState({ selected }: { selected: FolderFilter }) {
       ? 'Aucune ouverture hors dossier.'
       : 'Ce dossier est vide. Glisse-dépose une ouverture ici depuis un autre dossier.';
   return (
-    <div className="rounded-card border border-dashed border-line-strong bg-surface/60 p-16 text-center text-meta">
+    <div className="rounded-card border border-dashed border-on-dash bg-ground-overlay p-16 text-center text-on-muted">
       {msg}
     </div>
   );
@@ -1141,12 +1142,12 @@ function ImportModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {status === 'error' && error && (
-          <p className="rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger">
+          <p className="rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger-text">
             {error}
           </p>
         )}
         {status === 'done' && summary && (
-          <p className="rounded-md border border-success-border bg-success-soft px-3 py-2 text-sm text-success">
+          <p className="rounded-md border border-success-border bg-success-soft px-3 py-2 text-sm text-success-text">
             {summary}
           </p>
         )}

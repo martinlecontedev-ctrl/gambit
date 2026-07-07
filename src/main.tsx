@@ -3,7 +3,10 @@ import ReactDOM from 'react-dom/client';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { routeTree } from './routeTree.gen';
 import { completeLoginIfCallback } from './domain/lichessAuth';
+import { applyStoredTheme } from './domain/theme';
 import './styles/index.css';
+
+applyStoredTheme();
 
 // Strips any OAuth callback params synchronously (before the router reads
 // the URL); the token exchange itself finishes in the background and the

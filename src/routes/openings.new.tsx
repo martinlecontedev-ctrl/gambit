@@ -38,12 +38,12 @@ function NewOpening() {
 
   return (
     <main className="mx-auto max-w-md px-10 pt-12 pb-20">
-      <h1 className="text-[32px] font-extrabold tracking-[-0.02em]">
+      <h1 className="text-[32px] font-extrabold tracking-[-0.02em] text-on-ink">
         Nouvelle ouverture
       </h1>
       <form onSubmit={submit} className="mt-8 space-y-6">
         <div>
-          <label className="block text-sm font-semibold text-ink-soft">Nom</label>
+          <label className="block text-sm font-semibold text-on-body">Nom</label>
           <input
             type="text"
             value={name}
@@ -55,7 +55,7 @@ function NewOpening() {
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-ink-soft">
+          <label className="block text-sm font-semibold text-on-body">
             Couleur jouée
           </label>
           <div className="mt-2 grid grid-cols-2 gap-2.5">
@@ -67,7 +67,7 @@ function NewOpening() {
                 className={`rounded-[10px] border px-3 py-2.5 text-sm font-semibold transition ${
                   color === c
                     ? 'border-accent bg-accent-soft text-accent-soft-text'
-                    : 'border-line-strong bg-surface text-ink-soft hover:bg-surface-high'
+                    : 'border-ground-line text-seg-off hover:bg-ground-overlay'
                 }`}
               >
                 {c === 'white' ? 'Blancs' : 'Noirs'}
@@ -80,7 +80,7 @@ function NewOpening() {
           <button
             type="button"
             onClick={() => navigate({ to: '/' })}
-            className="rounded-btn px-4 py-2.5 text-sm font-semibold text-ink-soft transition hover:text-ink"
+            className="rounded-btn px-4 py-2.5 text-sm font-semibold text-on-muted transition hover:text-on-ink"
           >
             Annuler
           </button>

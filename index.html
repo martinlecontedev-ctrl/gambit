@@ -4,11 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gambit — Apprenez vos ouvertures</title>
-    <!-- Inline favicon: same rounded blue square as the header logo. Kills
+    <!-- Applied before first paint so a stored non-default theme never
+         flashes the default one (main.tsx re-applies for consistency). -->
+    <script>
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem('gambit.theme') || 'miton-vertorange';
+      } catch (e) {}
+    </script>
+    <!-- Inline favicon: same rounded orange square as the header logo. Kills
          the /favicon.ico 404 on every load without shipping an asset. -->
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%232a66b8'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23bf6528'/%3E%3C/svg%3E"
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

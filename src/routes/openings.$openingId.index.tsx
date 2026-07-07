@@ -227,15 +227,15 @@ function OverviewInner({ opening }: { opening: Opening }) {
       <div className="mb-4 grid grid-cols-[240px_1fr_350px] items-center gap-8">
         <Link
           to="/"
-          className="inline-flex items-center gap-2 text-[14.5px] font-semibold text-meta transition hover:text-ink"
+          className="inline-flex items-center gap-2 text-[14.5px] font-semibold text-on-muted transition hover:text-on-ink"
         >
           ← Retour
         </Link>
         <div className="flex items-baseline gap-5">
-          <h1 className="min-w-0 truncate text-[28px] font-extrabold tracking-[-0.02em]">
+          <h1 className="min-w-0 truncate text-[28px] font-extrabold tracking-[-0.02em] text-on-ink">
             {opening.name}
           </h1>
-          <p className="shrink-0 whitespace-nowrap text-sm text-meta">
+          <p className="shrink-0 whitespace-nowrap text-sm text-on-muted">
             {opening.color === 'white' ? 'Blancs' : 'Noirs'} ·{' '}
             {opening.lines.length} ligne{opening.lines.length > 1 ? 's' : ''}
           </p>
@@ -243,7 +243,7 @@ function OverviewInner({ opening }: { opening: Opening }) {
       </div>
       <div className="grid grid-cols-[240px_1fr_350px] items-start gap-8">
       <aside className="flex flex-col gap-2">
-        <h2 className="mx-1 mb-3.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-ink-muted">
+        <h2 className="mx-1 mb-3.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-on-muted">
           Chapitres
         </h2>
         <ul className="flex flex-col gap-1.5">
@@ -277,7 +277,7 @@ function OverviewInner({ opening }: { opening: Opening }) {
         </ul>
         <button
           onClick={() => setChapterModalOpen(true)}
-          className="mt-1 w-full rounded-xl border border-dashed border-line-strong px-3.5 py-3 text-[13.5px] font-semibold text-meta transition hover:border-accent hover:text-accent"
+          className="mt-1 w-full rounded-xl border border-dashed border-on-dash px-3.5 py-3 text-[13.5px] font-semibold text-on-muted transition hover:bg-ground-overlay hover:text-on-ink"
         >
           + Nouveau chapitre
         </button>
@@ -298,7 +298,7 @@ function OverviewInner({ opening }: { opening: Opening }) {
             </button>
             <button
               onClick={() => setExportOpen(true)}
-              className="h-10 rounded-[10px] border border-line-strong bg-surface px-3.75 text-[13.5px] font-semibold text-ink transition hover:bg-surface-high"
+              className="h-10 rounded-[10px] border border-chip-border bg-chip px-3.75 text-[13.5px] font-semibold text-chip-text transition hover:border-chip-hover"
             >
               Exporter
             </button>
@@ -308,7 +308,7 @@ function OverviewInner({ opening }: { opening: Opening }) {
               to="/openings/$openingId/edit"
               params={{ openingId: opening.id }}
               search={line ? { line: line.id, ply: cursorIdx } : {}}
-              className="flex h-10 items-center rounded-[10px] border border-line-strong bg-surface px-3.75 text-[13.5px] font-semibold text-ink transition hover:bg-surface-high"
+              className="flex h-10 items-center rounded-[10px] border border-chip-border bg-chip px-3.75 text-[13.5px] font-semibold text-chip-text transition hover:border-chip-hover"
             >
               Éditer
             </Link>
@@ -332,7 +332,7 @@ function OverviewInner({ opening }: { opening: Opening }) {
           <div className="relative">
             <Chessboard
               config={config}
-              className="aspect-square w-full overflow-hidden rounded-xl shadow-resting ring-1 ring-line-strong saturate-[0.93]"
+              className="aspect-square w-full overflow-hidden rounded-xl shadow-board ring-1 ring-board-frame saturate-[0.93]"
             />
             {currentAnnotation?.nag !== undefined &&
               cursorIdx > 0 &&
@@ -354,7 +354,7 @@ function OverviewInner({ opening }: { opening: Opening }) {
       </section>
 
       <aside className="flex flex-col gap-4">
-        <div className="overflow-hidden rounded-[14px] border border-line bg-surface shadow-resting">
+        <div className="overflow-hidden rounded-[14px] border border-line bg-surface text-ink shadow-resting">
           <div className="px-4 pt-4">
             <div className="mb-3 flex items-baseline justify-between gap-2">
               <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
@@ -570,7 +570,7 @@ function AdherenceCard({ opening }: { opening: Opening }) {
                 <button
                   onClick={() => navigate({ to: '/lichess' })}
                   title="Voir tes ouvertures jouées — et créer son répertoire si tu veux la driller"
-                  className="shrink-0 rounded-full border border-line-strong bg-surface-high px-2 py-0.5 text-[11px] font-semibold text-ink transition hover:bg-field"
+                  className="shrink-0 rounded-full border border-chip-border bg-chip px-2 py-0.5 text-[11px] font-semibold text-chip-text transition hover:border-chip-hover"
                 >
                   → Lichess
                 </button>
@@ -643,7 +643,7 @@ function ChapterItem({
   return (
     <div
       className={`group relative rounded-xl border transition ${
-        active ? 'border-line bg-surface shadow-resting' : 'border-transparent hover:bg-track'
+        active ? 'border-line bg-surface shadow-resting' : 'border-transparent hover:bg-ground-overlay'
       }`}
     >
       {renaming ? (
@@ -656,14 +656,16 @@ function ChapterItem({
             if (e.key === 'Enter') onRenameSubmit();
             if (e.key === 'Escape') onRenameCancel();
           }}
-          className="w-full rounded-xl bg-transparent px-3.5 py-3 text-sm text-ink focus:outline-none"
+          className={`w-full rounded-xl bg-transparent px-3.5 py-3 text-sm focus:outline-none ${
+            active ? 'text-ink' : 'text-on-ink'
+          }`}
         />
       ) : (
         <button
           onClick={onSelect}
           title={chapter.name}
           className={`flex w-full items-center gap-2.5 rounded-xl px-3.5 py-3 text-left text-sm font-medium transition ${
-            active ? 'text-ink' : 'text-ink-soft hover:text-ink'
+            active ? 'text-ink' : 'text-on-body hover:text-on-ink'
           }`}
         >
           <span
@@ -672,7 +674,9 @@ function ChapterItem({
           <span className="truncate">{chapter.name}</span>
           {hasCustomRange && (
             <span
-              className="shrink-0 text-[13px] font-bold leading-none text-accent"
+              className={`shrink-0 text-[13px] font-bold leading-none ${
+                active ? 'text-accent' : 'text-accent-ground'
+              }`}
               title="Révision limitée à une fenêtre de coups"
             >
               ◎
@@ -709,7 +713,7 @@ function ChapterItem({
                 onDelete();
               }}
               title="Supprimer le chapitre"
-              className="rounded p-1 text-xs text-ink-soft transition hover:bg-danger-soft hover:text-danger"
+              className="rounded p-1 text-xs text-ink-soft transition hover:bg-danger-soft hover:text-danger-text"
             >
               ✕
             </button>

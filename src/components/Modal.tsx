@@ -2,8 +2,8 @@ import { useEffect, type ReactNode } from 'react';
 
 /**
  * Minimal overlay dialog: backdrop click and Escape both close it. Inner
- * clicks don't bubble so the form below stays interactive. Light "paper"
- * surface over a soft ink scrim.
+ * clicks don't bubble so the form below stays interactive. A themed card
+ * surface over the theme's scrim.
  */
 export function Modal({
   open,
@@ -32,11 +32,11 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className={`w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} rounded-card border border-line bg-paper p-5 shadow-board`}
+        className={`w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} rounded-card border border-line bg-surface p-5 text-ink shadow-board`}
         onClick={e => e.stopPropagation()}
       >
         {title && (

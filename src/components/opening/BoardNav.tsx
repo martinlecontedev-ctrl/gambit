@@ -13,30 +13,30 @@ export function BoardNav({
 }) {
   const pct = total ? (cursorIdx / total) * 100 : 0;
   return (
-    <div className="rounded-xl border border-line bg-surface px-3.5 py-2.5 shadow-resting">
+    <div className="rounded-xl px-3.5 py-2.5">
       <div className="flex items-center gap-3">
         <button
           onClick={() => onChange(0)}
-          className="whitespace-nowrap text-[13px] font-semibold text-ink-soft transition hover:text-ink"
+          className="whitespace-nowrap text-[13px] font-semibold text-on-muted transition hover:text-on-ink"
         >
           Début
         </button>
         <button
           onClick={() => onChange(Math.max(0, cursorIdx - 1))}
           aria-label="Coup précédent"
-          className="flex h-8 w-9 items-center justify-center rounded-lg border border-line-strong bg-field text-ink-soft transition hover:bg-track"
+          className="flex h-8 w-9 items-center justify-center rounded-lg border border-chip-border bg-chip text-chip-text transition hover:border-chip-hover"
         >
           ←
         </button>
         <div className="relative flex-1">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-ground-track">
             <div
-              className="h-full rounded-full bg-accent"
+              className="h-full rounded-full bg-accent-ground"
               style={{ width: `${pct}%` }}
             />
           </div>
           <div
-            className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-accent bg-field shadow-resting"
+            className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-accent-ground bg-surface shadow-resting"
             style={{ left: `${pct}%` }}
           />
           <input
@@ -53,17 +53,17 @@ export function BoardNav({
         <button
           onClick={() => onChange(Math.min(total, cursorIdx + 1))}
           aria-label="Coup suivant"
-          className="flex h-8 w-9 items-center justify-center rounded-lg border border-line-strong bg-field text-ink-soft transition hover:bg-track"
+          className="flex h-8 w-9 items-center justify-center rounded-lg border border-chip-border bg-chip text-chip-text transition hover:border-chip-hover"
         >
           →
         </button>
         <button
           onClick={() => onChange(total)}
-          className="whitespace-nowrap text-[13px] font-semibold text-ink-soft transition hover:text-ink"
+          className="whitespace-nowrap text-[13px] font-semibold text-on-muted transition hover:text-on-ink"
         >
           Fin
         </button>
-        <span className="whitespace-nowrap pl-1 text-[12.5px] text-ink-muted tnum">
+        <span className="whitespace-nowrap pl-1 text-[12.5px] text-on-idle tnum">
           {cursorIdx} / {total}
         </span>
       </div>

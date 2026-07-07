@@ -4,9 +4,9 @@ import { Link } from '@tanstack/react-router';
  * `$openingId` param matches nothing in storage. */
 export function OpeningNotFound() {
   return (
-    <main className="mx-auto max-w-md px-10 py-16 text-center text-ink-soft">
+    <main className="mx-auto max-w-md px-10 py-16 text-center text-on-body">
       Ouverture introuvable.{' '}
-      <Link to="/" className="font-semibold text-accent underline">
+      <Link to="/" className="font-semibold text-accent-ground underline">
         Retour
       </Link>
     </main>
