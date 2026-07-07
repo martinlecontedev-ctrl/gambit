@@ -251,7 +251,7 @@ function ReviewBanner({
       : `${names.slice(0, 3).join(', ')} +${names.length - 3}`;
 
   return (
-    <div className="flex h-full flex-col justify-between gap-3.5 rounded-[18px] border border-line bg-surface px-5 py-4 text-ink shadow-card sm:px-6">
+    <div className="flex h-full flex-col justify-between gap-3 rounded-[18px] border border-line bg-surface px-5 py-3.5 text-ink shadow-card sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <span className="text-[44px] font-extrabold leading-[0.9] tracking-[-0.03em] text-accent tnum">
@@ -346,7 +346,7 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
   const todayKey = localDate(now);
 
   return (
-    <div className="flex h-full min-h-34 items-stretch gap-5 rounded-[18px] border border-line bg-surface px-5 py-4 text-ink shadow-card sm:px-6">
+    <div className="flex h-full min-h-24 items-stretch gap-5 rounded-[18px] border border-line bg-surface px-5 py-3.5 text-ink shadow-card sm:px-6">
       <div className="flex shrink-0 flex-col justify-center">
         <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
           {tr.activity.streakTitle}
