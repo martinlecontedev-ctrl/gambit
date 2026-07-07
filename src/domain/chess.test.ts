@@ -3,6 +3,7 @@ import {
   applyUci,
   chessFromFen,
   fenOf,
+  isPromotion,
   lineToSan,
   positionKey,
   sameMove,
@@ -52,6 +53,22 @@ describe('uciFromMove', () => {
   it('does not promote a non-pawn move to the last rank', () => {
     const chess = chessFromFen('4k3/8/8/8/8/8/8/R3K3 w Q - 0 1');
     expect(uciFromMove(chess, 'a1' as Key, 'a8' as Key)).toBe('a1a8');
+  });
+
+  it('promotes to the requested piece, both colors', () => {
+    const white = chessFromFen('4k3/4P3/8/8/8/8/8/4K3 w - - 0 1');
+    expect(uciFromMove(white, 'e7' as Key, 'e8' as Key, 'n')).toBe('e7e8n');
+    expect(uciFromMove(white, 'e7' as Key, 'e8' as Key, 'r')).toBe('e7e8r');
+    const black = chessFromFen('4k3/8/8/8/8/8/4p3/2K5 b - - 0 1');
+    expect(uciFromMove(black, 'e2' as Key, 'e1' as Key, 'b')).toBe('e2e1b');
+  });
+
+  it('isPromotion flags only pawn moves onto the last rank', () => {
+    const chess = chessFromFen('4k3/4P3/8/8/8/8/8/4K3 w - - 0 1');
+    expect(isPromotion(chess, 'e7' as Key, 'e8' as Key)).toBe(true);
+    expect(isPromotion(chess, 'e1' as Key, 'e2' as Key)).toBe(false);
+    const rook = chessFromFen('4k3/8/8/8/8/8/8/R3K3 w Q - 0 1');
+    expect(isPromotion(rook, 'a1' as Key, 'a8' as Key)).toBe(false);
   });
 
   it('normalizes king-on-rook short castle to king-target form', () => {

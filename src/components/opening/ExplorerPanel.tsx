@@ -11,8 +11,8 @@ import {
 import { getAccount, login, subscribeAccount } from '../../domain/lichessAuth';
 
 const EXPLORER_SOURCES: { id: ExplorerSource; label: string }[] = [
-  { id: 'lichess', label: 'Lichess' },
   { id: 'masters', label: 'Masters' },
+  { id: 'lichess', label: 'Lichess' },
 ];
 
 const GAMES_FMT = new Intl.NumberFormat('fr-FR', {
@@ -43,11 +43,13 @@ export function ExplorerPanel({
   });
   const [source, setSource] = useState<ExplorerSource>(() => {
     try {
-      return localStorage.getItem('gambit.explorer.source') === 'masters'
-        ? 'masters'
-        : 'lichess';
+      // Masters is the default: an explicit 'lichess' choice is respected,
+      // anything else (unset, legacy value) falls back to masters.
+      return localStorage.getItem('gambit.explorer.source') === 'lichess'
+        ? 'lichess'
+        : 'masters';
     } catch {
-      return 'lichess';
+      return 'masters';
     }
   });
   const [result, setResult] = useState<ExplorerResult | null>(null);

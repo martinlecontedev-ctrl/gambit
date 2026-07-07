@@ -32,21 +32,33 @@ export function turnColor(chess: Chess): 'white' | 'black' {
   return chess.turn;
 }
 
+export type PromotionRole = 'q' | 'n' | 'r' | 'b';
+
+/**
+ * True when moving the piece on `orig` to `dest` promotes a pawn. Board
+ * handlers must then ask WHICH piece (PromotionChooser) before building the
+ * UCI — never assume queen.
+ */
+export function isPromotion(chess: Chess, orig: Key, dest: Key): boolean {
+  const sq = parseSquare(orig);
+  const piece = sq !== undefined ? chess.board.get(sq) : undefined;
+  return piece?.role === 'pawn' && (dest[1] === '8' || dest[1] === '1');
+}
+
 /**
  * Build a UCI string from chessground (orig, dest) coords.
- * Auto-promotes pawn moves to the last rank into a queen — sufficient for
- * opening drills. Castling moves get rewritten to the king-target form
- * (e.g. e1c1 / e1g1) regardless of whether the user dropped the king on the
- * castling square or directly on its rook (Chess960-style).
+ * Pawn moves to the last rank promote to `promotion` (queen when the caller
+ * doesn't ask — legacy paths). Castling moves get rewritten to the
+ * king-target form (e.g. e1c1 / e1g1) regardless of whether the user dropped
+ * the king on the castling square or directly on its rook (Chess960-style).
  */
-export function uciFromMove(chess: Chess, orig: Key, dest: Key): string {
-  const sq = parseSquare(orig);
-  if (sq !== undefined) {
-    const piece = chess.board.get(sq);
-    if (piece?.role === 'pawn' && (dest[1] === '8' || dest[1] === '1')) {
-      return `${orig}${dest}q`;
-    }
-  }
+export function uciFromMove(
+  chess: Chess,
+  orig: Key,
+  dest: Key,
+  promotion: PromotionRole = 'q',
+): string {
+  if (isPromotion(chess, orig, dest)) return `${orig}${dest}${promotion}`;
   return normalizeCastleUci(chess, `${orig}${dest}`);
 }
 

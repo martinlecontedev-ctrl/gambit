@@ -13,14 +13,17 @@ import { OpeningNotFound } from '../components/opening/OpeningNotFound';
 import { RecognitionBar } from '../components/opening/RecognitionBar';
 import { SelectedLineView } from '../components/opening/SelectedLineView';
 import { useLineNavigation } from '../components/opening/useLineNavigation';
+import { PromotionChooser } from '../components/PromotionChooser';
 import {
   fenOf,
+  isPromotion,
   legalDests,
   positionKey,
   sameMove,
   turnColor,
   uciFromMove,
   uciToSanAt,
+  type PromotionRole,
 } from '../domain/chess';
 import { engine, type EngineResult } from '../domain/engine';
 import { NAG_COLORS, NAG_LABELS, NAG_ORDER, NAG_SYMBOLS } from '../domain/nag';
@@ -150,6 +153,10 @@ function EditOpeningInner({
   });
   const [engineResult, setEngineResult] = useState<EngineResult | null>(null);
   const [isThinking, setIsThinking] = useState(false);
+  /** Pawn dropped on the last rank: the move waits for the piece choice. */
+  const [pendingPromo, setPendingPromo] = useState<{ orig: Key; dest: Key } | null>(
+    null,
+  );
 
   const toggleEngine = () => {
     setEngineEnabled(prev => {
@@ -465,8 +472,12 @@ function EditOpeningInner({
         dests: legalDests(chess),
         events: {
           after: (orig: Key, dest: Key) => {
-            const uci = uciFromMove(chess, orig, dest);
-            playMove(uci);
+            if (isPromotion(chess, orig, dest)) {
+              // Don't play yet: the chooser resolves (or cancels) the move.
+              setPendingPromo({ orig, dest });
+              return;
+            }
+            playMove(uciFromMove(chess, orig, dest));
           },
         },
       },
@@ -496,8 +507,10 @@ function EditOpeningInner({
         },
       },
     };
+    // pendingPromo is a dep so opening/cancelling the chooser re-sets the fen
+    // (snaps the visually-moved pawn back until the choice is made).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chess, draft, line, cursorIdx, selectedLineId, currentAnnotation, currentFen, engineAutoShapes]);
+  }, [chess, draft, line, cursorIdx, selectedLineId, currentAnnotation, currentFen, engineAutoShapes, pendingPromo]);
 
   /** Delete a line and re-parent its children to its own parent (no orphans). */
   const deleteLine = (id: string) => {
@@ -605,6 +618,18 @@ function EditOpeningInner({
               />
             )}
             <Chessboard config={config} />
+            {pendingPromo && (
+              <PromotionChooser
+                dest={pendingPromo.dest}
+                color={turnColor(chess)}
+                orientation={draft.color}
+                onPick={(role: PromotionRole) => {
+                  playMove(uciFromMove(chess, pendingPromo.orig, pendingPromo.dest, role));
+                  setPendingPromo(null);
+                }}
+                onCancel={() => setPendingPromo(null)}
+              />
+            )}
             {currentAnnotation?.nag !== undefined &&
               cursorIdx > 0 &&
               line &&

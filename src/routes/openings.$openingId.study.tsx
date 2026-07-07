@@ -6,9 +6,11 @@ import { Chessboard } from '../components/Chessboard';
 import { FigurineSan } from '../components/FigurineSan';
 import { NagSquareBadge } from '../components/NagSquareBadge';
 import { OpeningNotFound } from '../components/opening/OpeningNotFound';
+import { PromotionChooser } from '../components/PromotionChooser';
 import {
   applyUci,
   chessFromFen,
+  isPromotion,
   fenOf,
   legalDests,
   positionKey,
@@ -17,6 +19,7 @@ import {
   turnColor,
   uciFromMove,
   uciToSanAt,
+  type PromotionRole,
 } from '../domain/chess';
 import { buildCards, coverCardInReviewRanges, openingStats } from '../domain/cards';
 import { NAG_COLORS, NAG_LABELS, NAG_SYMBOLS } from '../domain/nag';
@@ -291,6 +294,10 @@ function ReviewSession({
   const [queue] = useState(initialQueue);
   const [idx, setIdx] = useState(0);
   const [phase, setPhase] = useState<Phase>('awaiting');
+  /** Pawn dropped on the last rank: grading waits for the piece choice. */
+  const [pendingPromo, setPendingPromo] = useState<{ orig: Key; dest: Key } | null>(
+    null,
+  );
 
   const finished = idx >= queue.length;
   const card = finished ? undefined : queue[idx];
@@ -342,6 +349,12 @@ function ReviewSession({
         events: {
           after: (orig: Key, dest: Key) => {
             if (!interactive) return;
+            if (isPromotion(chess, orig, dest)) {
+              // Grade once the piece is chosen — an under-promotion in the
+              // repertoire must be answerable (and a wrong piece is a miss).
+              setPendingPromo({ orig, dest });
+              return;
+            }
             const uci = uciFromMove(chess, orig, dest);
             const correct = expectedUci !== undefined && sameMove(chess, uci, expectedUci);
             setPhase(correct ? 'correct' : 'wrong');
@@ -371,10 +384,22 @@ function ReviewSession({
     expectedUci,
     card,
     annotation,
+    // Re-set the fen when the chooser opens/cancels: snaps the visually
+    // moved pawn back until the promotion piece is chosen.
+    pendingPromo,
   ]);
+
+  const resolvePromotion = (role: PromotionRole) => {
+    if (!pendingPromo) return;
+    const uci = uciFromMove(chess, pendingPromo.orig, pendingPromo.dest, role);
+    const correct = expectedUci !== undefined && sameMove(chess, uci, expectedUci);
+    setPhase(correct ? 'correct' : 'wrong');
+    setPendingPromo(null);
+  };
 
   const grade = (g: Grade) => {
     if (!card) return;
+    setPendingPromo(null);
     const updated = review(card, g);
     cardsRepo.upsert({ ...card, ...updated });
     reviewsRepo.append({
@@ -453,6 +478,15 @@ function ReviewSession({
             <div className="flex w-full max-w-140 flex-col items-center gap-4">
               <div className="relative w-full">
                 <Chessboard config={config} />
+                {pendingPromo && phase === 'awaiting' && (
+                  <PromotionChooser
+                    dest={pendingPromo.dest}
+                    color={opening.color}
+                    orientation={opening.color}
+                    onPick={resolvePromotion}
+                    onCancel={() => setPendingPromo(null)}
+                  />
+                )}
                 {showAnswer && annotation?.nag !== undefined && expectedUci && (
                   <NagSquareBadge
                     nag={annotation.nag}
