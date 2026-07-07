@@ -370,7 +370,9 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
         </div>
       </div>
 
-      <div className="grid min-w-0 flex-1 grid-cols-[1.75rem_1fr] grid-rows-[1fr_auto] gap-x-2">
+      {/* Plot height is capped (grid-rows) and the chart self-centers, so the
+          bars stay a readable height instead of filling the whole card. */}
+      <div className="grid min-w-0 flex-1 self-center grid-cols-[1.75rem_1fr] grid-rows-[5.5rem_auto] gap-x-2">
         {/* Y axis: review-count ticks aligned to the gridlines. */}
         <div className="flex flex-col justify-between text-right text-[9px] leading-none text-ink-muted tnum">
           <span>{axisMax}</span>
