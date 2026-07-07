@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { Modal } from '../components/Modal';
+import { ReviewSwitch } from '../components/ReviewSwitch';
 import {
   fetchLichessStudy,
   importFromPgn,
@@ -13,7 +14,12 @@ import {
   reviewsToday,
   streaks,
 } from '../domain/activity';
-import { openingStats, type OpeningStats } from '../domain/cards';
+import {
+  openingReviewOn,
+  openingStats,
+  withOpeningReview,
+  type OpeningStats,
+} from '../domain/cards';
 import type { Card, Color, Folder, Opening, ReviewEvent } from '../domain/types';
 import {
   cardsRepo,
@@ -287,48 +293,27 @@ function ReviewBanner({
 
 /** One heat cell per day; `null` marks the future days of the current week so
  * the last grid column keeps its 7-row shape. */
-type HeatDay = { key: string; date: Date } | null;
+/** The activity graph covers the last 8 weeks — recent rhythm, not a year of
+ * mostly-empty calendar. One bar per day, height ∝ successful reviews. */
+const GRAPH_DAYS = 56;
 
-const HEAT_WEEKS = 52;
-const HEAT_CELL = 13;
-const HEAT_GAP = 3;
-const HEAT_PITCH = HEAT_CELL + HEAT_GAP;
+type GraphDay = { key: string; date: Date; count: number };
 
-/** Cell backgrounds mix the live accent into the surface, so the heatmap
- * follows the `data-theme` palette like every other accent surface. The cells
- * live inside a card, so they mix against the card surface, not the ground. */
-const HEAT_BG = [
-  'var(--color-track)',
-  'color-mix(in srgb, var(--accent) 22%, var(--color-surface))',
-  'color-mix(in srgb, var(--accent) 45%, var(--color-surface))',
-  'color-mix(in srgb, var(--accent) 70%, var(--color-surface))',
-  'var(--accent)',
-];
-
-const heatLevel = (n: number): number =>
-  n === 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 20 ? 3 : 4;
-
-/** The last `HEAT_WEEKS` calendar weeks (Monday-first), oldest column first,
- * the current week last. Date arithmetic goes through `setDate` so DST
- * transitions can't skip a day. */
-function buildHeatWeeks(now: number): HeatDay[][] {
-  const monday = new Date(now);
-  monday.setHours(0, 0, 0, 0);
-  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
-  const weeks: HeatDay[][] = [];
-  for (let w = HEAT_WEEKS - 1; w >= 0; w--) {
-    const week: HeatDay[] = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(monday);
-      d.setDate(d.getDate() - w * 7 + i);
-      week.push(d.getTime() > now ? null : { key: localDate(d.getTime()), date: d });
-    }
-    weeks.push(week);
+/** Daily series ending today. Date arithmetic goes through `setDate` so DST
+ * transitions can't skip or double a day. */
+function buildGraphDays(byDay: Map<string, number>, now: number): GraphDay[] {
+  const days: GraphDay[] = [];
+  for (let back = GRAPH_DAYS - 1; back >= 0; back--) {
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - back);
+    const key = localDate(d.getTime());
+    days.push({ key, date: d, count: byDay.get(key) ?? 0 });
   }
-  return weeks;
+  return days;
 }
 
-const MONTH_FMT = new Intl.DateTimeFormat('fr-FR', { month: 'short' });
+const TICK_FMT = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
 const DAY_FMT = new Intl.DateTimeFormat('fr-FR', {
   weekday: 'short',
   day: 'numeric',
@@ -338,27 +323,15 @@ const DAY_FMT = new Intl.DateTimeFormat('fr-FR', {
 function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number }) {
   const byDay = useMemo(() => activityByDay(reviews), [reviews]);
   const streak = useMemo(() => streaks(reviews, now), [reviews, now]);
-  const weeks = useMemo(() => buildHeatWeeks(now), [now]);
+  const graph = useMemo(() => buildGraphDays(byDay, now), [byDay, now]);
+  const peak = useMemo(() => Math.max(...graph.map(d => d.count)), [graph]);
+  const todayKey = localDate(now);
 
   const yearTotal = useMemo(() => {
     let s = 0;
     for (const v of byDay.values()) s += v;
     return s;
   }, [byDay]);
-
-  // A month label sits on the first column whose Monday enters a new month.
-  const monthLabels = useMemo(
-    () =>
-      weeks.map((week, i) => {
-        const cur = week[0];
-        const prev = i > 0 ? weeks[i - 1][0] : null;
-        if (!cur || !prev) return '';
-        return cur.date.getMonth() !== prev.date.getMonth()
-          ? MONTH_FMT.format(cur.date)
-          : '';
-      }),
-    [weeks],
-  );
 
   return (
     <div className="flex items-stretch gap-8 rounded-[18px] border border-line bg-surface px-6 py-5.5 text-ink shadow-card">
@@ -404,67 +377,54 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
         </div>
       </div>
 
-      <div className="min-w-0 flex-1 overflow-x-auto">
-        <div
-          className="mb-1.5 grid text-[10px] leading-none text-ink-muted"
-          style={{
-            gridTemplateColumns: `repeat(${weeks.length}, ${HEAT_PITCH}px)`,
-            marginLeft: 30,
-          }}
-        >
-          {monthLabels.map((m, i) => (
-            <span key={i} className="overflow-visible whitespace-nowrap">
-              {m}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="mb-2 flex items-baseline justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
+            Activité · 8 semaines
+          </span>
+          <span className="text-[11.5px] text-meta">
+            {peak > 0
+              ? `pic : ${peak} révision${peak > 1 ? 's' : ''} / jour`
+              : 'une barre par jour — la première révision la fait naître'}
+          </span>
+        </div>
+        {/* One flex-1 bar per day: uniform widths at any card width, no chart
+            lib. Height ∝ count against the window's peak; zero days keep a
+            2px stub so the rhythm (and the gaps) stay honest. */}
+        <div className="flex flex-1 items-end gap-[2.5px]" style={{ minHeight: 96 }}>
+          {graph.map(day => {
+            const isToday = day.key === todayKey;
+            return (
+              <span
+                key={day.key}
+                title={`${day.count} révision${day.count > 1 ? 's' : ''} · ${DAY_FMT.format(day.date)}`}
+                className="flex-1 rounded-t-xs transition-[filter] hover:brightness-90"
+                style={{
+                  height:
+                    day.count > 0
+                      ? `${Math.max(8, (day.count / peak) * 100)}%`
+                      : '2px',
+                  background:
+                    day.count > 0
+                      ? isToday
+                        ? 'var(--accent)'
+                        : 'color-mix(in srgb, var(--accent) 72%, var(--color-surface))'
+                      : isToday
+                        ? 'var(--accent-soft-border)'
+                        : 'var(--color-track)',
+                }}
+              />
+            );
+          })}
+        </div>
+        <div className="mt-1 border-t border-line pt-1.5">
+          <div className="flex justify-between text-[10.5px] text-ink-muted">
+            <span>{TICK_FMT.format(graph[0].date)}</span>
+            <span>{TICK_FMT.format(graph[Math.floor(GRAPH_DAYS / 2)].date)}</span>
+            <span className={streak.todayDone ? 'font-semibold text-accent-soft-text' : ''}>
+              aujourd'hui
             </span>
-          ))}
-        </div>
-        <div className="flex">
-          <div
-            className="grid w-[30px] shrink-0 text-[10px] leading-[13px] text-ink-muted"
-            style={{ gridTemplateRows: `repeat(7, ${HEAT_PITCH}px)` }}
-          >
-            <span style={{ gridRow: 1 }}>Lun</span>
-            <span style={{ gridRow: 3 }}>Mer</span>
-            <span style={{ gridRow: 5 }}>Ven</span>
           </div>
-          <div
-            className="grid grid-flow-col"
-            style={{
-              gridTemplateRows: `repeat(7, ${HEAT_CELL}px)`,
-              gridAutoColumns: `${HEAT_CELL}px`,
-              gap: HEAT_GAP,
-            }}
-          >
-            {weeks.flatMap((week, wi) =>
-              week.map((day, di) => {
-                if (!day) return <span key={`${wi}-${di}`} />;
-                const count = byDay.get(day.key) ?? 0;
-                return (
-                  <span
-                    key={`${wi}-${di}`}
-                    title={`${
-                      count > 0
-                        ? `${count} révision${count > 1 ? 's' : ''}`
-                        : 'Aucune révision'
-                    } · ${DAY_FMT.format(day.date)}`}
-                    className="rounded-[3px]"
-                    style={{ background: HEAT_BG[heatLevel(count)] }}
-                  />
-                );
-              }),
-            )}
-          </div>
-        </div>
-        <div className="mt-2.5 flex items-center justify-end gap-1.5 text-[10.5px] text-ink-muted">
-          <span className="mr-0.5">Moins</span>
-          {HEAT_BG.map((bg, i) => (
-            <span
-              key={i}
-              className="h-[10px] w-[10px] rounded-[3px]"
-              style={{ background: bg }}
-            />
-          ))}
-          <span className="ml-0.5">Plus</span>
         </div>
       </div>
     </div>
@@ -758,6 +718,17 @@ function OpeningCard({
 }) {
   const masteryPct =
     stats.total > 0 ? Math.round((stats.mastered / stats.total) * 100) : 0;
+  const reviewOn = openingReviewOn(opening);
+  // Read the latest before flipping: two writers on the same opening object
+  // from stale closures would clobber each other (see CLAUDE.md bug #3).
+  const toggleReview = () => {
+    const latest = openingsRepo.get(opening.id);
+    if (!latest) return;
+    openingsRepo.save({
+      ...withOpeningReview(latest, !openingReviewOn(latest)),
+      updatedAt: Date.now(),
+    });
+  };
   return (
     <li
       draggable
@@ -779,22 +750,25 @@ function OpeningCard({
             {opening.lines.length > 1 ? 's' : ''}
           </p>
         </div>
-        <button
-          onClick={() => {
-            if (
-              confirm(
-                `Supprimer "${opening.name}" ?\n\nLes lignes, annotations et cartes de révision associées seront perdues.`,
-              )
-            ) {
-              openingsRepo.delete(opening.id);
-            }
-          }}
-          title="Supprimer cette ouverture"
-          aria-label="Supprimer cette ouverture"
-          className="rounded p-1 text-lg leading-none text-ink-muted transition hover:bg-danger-soft hover:text-danger-text"
-        >
-          ✕
-        </button>
+        <div className="flex items-center gap-2.5">
+          <ReviewSwitch on={reviewOn} onToggle={toggleReview} />
+          <button
+            onClick={() => {
+              if (
+                confirm(
+                  `Supprimer "${opening.name}" ?\n\nLes lignes, annotations et cartes de révision associées seront perdues.`,
+                )
+              ) {
+                openingsRepo.delete(opening.id);
+              }
+            }}
+            title="Supprimer cette ouverture"
+            aria-label="Supprimer cette ouverture"
+            className="rounded p-1 text-lg leading-none text-ink-muted transition hover:bg-danger-soft hover:text-danger-text"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       <div className="mt-4">
@@ -803,7 +777,7 @@ function OpeningCard({
             Maîtrise
           </span>
           <span className="text-[12.5px] font-bold text-accent-soft-text tnum">
-            {masteryPct}%
+            {reviewOn ? `${masteryPct}%` : '—'}
           </span>
         </div>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
@@ -815,7 +789,11 @@ function OpeningCard({
       </div>
 
       <div className="mt-3.5 h-7">
-        {stats.due > 0 ? (
+        {!reviewOn ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-track px-2.75 py-1.25 text-[12.5px] font-semibold text-ink-muted">
+            Hors révision
+          </span>
+        ) : stats.due > 0 ? (
           <span className="inline-flex items-center gap-1.75 rounded-full border border-accent-soft-border bg-accent-soft px-2.75 py-1.25 text-[12.5px] font-semibold text-accent-soft-text">
             <span className="h-1.75 w-1.75 rounded-full bg-accent-dot" />
             {stats.due} à réviser
@@ -831,14 +809,16 @@ function OpeningCard({
       </div>
 
       <div className="mt-4.5 flex items-center gap-2.5">
-        <Link
-          to="/openings/$openingId/study"
-          params={{ openingId: opening.id }}
-          search={{ program: false }}
-          className="btn-accent flex h-10.5 flex-1 items-center justify-center rounded-[10px] text-sm font-semibold"
-        >
-          Réviser
-        </Link>
+        {reviewOn && (
+          <Link
+            to="/openings/$openingId/study"
+            params={{ openingId: opening.id }}
+            search={{ program: false }}
+            className="btn-accent flex h-10.5 flex-1 items-center justify-center rounded-[10px] text-sm font-semibold"
+          >
+            Réviser
+          </Link>
+        )}
         <Link
           to="/openings/$openingId"
           params={{ openingId: opening.id }}
