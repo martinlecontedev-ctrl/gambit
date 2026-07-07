@@ -251,10 +251,10 @@ function ReviewBanner({
       : `${names.slice(0, 3).join(', ')} +${names.length - 3}`;
 
   return (
-    <div className="flex h-full flex-col justify-between gap-4.5 rounded-[18px] border border-line bg-surface px-5 py-5 text-ink shadow-card sm:px-6 sm:py-5.5">
+    <div className="flex h-full flex-col justify-between gap-3.5 rounded-[18px] border border-line bg-surface px-5 py-4 text-ink shadow-card sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-5">
-          <span className="text-[54px] font-extrabold leading-[0.9] tracking-[-0.03em] text-accent tnum">
+        <div className="flex items-center gap-4">
+          <span className="text-[44px] font-extrabold leading-[0.9] tracking-[-0.03em] text-accent tnum">
             {totalDue}
           </span>
           <div>
@@ -271,12 +271,12 @@ function ReviewBanner({
           to="/openings/$openingId/study"
           params={{ openingId: dueOpenings[0].id }}
           search={{ program: true }}
-          className="btn-accent flex h-11.5 items-center rounded-btn px-5.5 text-[15px] font-semibold"
+          className="btn-accent flex h-10 items-center rounded-btn px-5 text-[14px] font-semibold"
         >
           {tr.banner.start}
         </Link>
       </div>
-      <div className="mt-4.5 flex items-center gap-3">
+      <div className="flex items-center gap-3">
         <div className="h-1.75 flex-1 overflow-hidden rounded-full bg-track">
           <div
             className="h-full rounded-full bg-accent transition-all"
@@ -346,7 +346,7 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
   const todayKey = localDate(now);
 
   return (
-    <div className="flex h-full min-h-45 items-stretch gap-5 rounded-[18px] border border-line bg-surface px-5 py-4.5 text-ink shadow-card sm:px-6">
+    <div className="flex h-full min-h-34 items-stretch gap-5 rounded-[18px] border border-line bg-surface px-5 py-4 text-ink shadow-card sm:px-6">
       <div className="flex shrink-0 flex-col justify-center">
         <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
           {tr.activity.streakTitle}
@@ -372,7 +372,7 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
 
       {/* Plot height is capped (grid-rows) and the chart self-centers, so the
           bars stay a readable height instead of filling the whole card. */}
-      <div className="grid min-w-0 flex-1 self-center grid-cols-[1.75rem_1fr] grid-rows-[5.5rem_auto] gap-x-2">
+      <div className="grid min-w-0 flex-1 self-center grid-cols-[1.75rem_1fr] grid-rows-[4rem_auto] gap-x-2">
         {/* Y axis: review-count ticks aligned to the gridlines. */}
         <div className="flex flex-col justify-between text-right text-[9px] leading-none text-ink-muted tnum">
           <span>{axisMax}</span>
