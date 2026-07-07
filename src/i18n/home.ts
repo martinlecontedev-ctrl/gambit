@@ -22,10 +22,8 @@ const fr = {
       `${done} faite${done > 1 ? 's' : ''} · ${left} restante${left > 1 ? 's' : ''}`,
   },
   activity: {
+    streakTitle: 'Série',
     daysInARow: (n: number) => `jour${n > 1 ? 's' : ''} d'affilée`,
-    doneToday: "Validée aujourd'hui",
-    keepIt: "Révise aujourd'hui pour la garder",
-    startIt: 'Révise une position pour la lancer',
     record: 'Record :',
     days: (n: number) => `jour${n > 1 ? 's' : ''}`,
     dayTooltip: (n: number, date: string) => `${n} révision${n > 1 ? 's' : ''} · ${date}`,
@@ -124,10 +122,8 @@ const en: typeof fr = {
     progress: (done: number, left: number) => `${done} done · ${left} left`,
   },
   activity: {
+    streakTitle: 'Streak',
     daysInARow: (n: number) => `day${n > 1 ? 's' : ''} in a row`,
-    doneToday: 'Done for today',
-    keepIt: 'Review today to keep it',
-    startIt: 'Review one position to start it',
     record: 'Best:',
     days: (n: number) => `day${n > 1 ? 's' : ''}`,
     dayTooltip: (n: number, date: string) => `${n} review${n > 1 ? 's' : ''} · ${date}`,
