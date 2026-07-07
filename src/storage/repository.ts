@@ -1,4 +1,5 @@
 import type { Card, Folder, Opening, ReviewEvent, StudySync } from '../domain/types';
+import type { BackupData } from '../domain/backup';
 
 /**
  * Bring an opening up to the current shape. Openings stored before the
@@ -116,9 +117,22 @@ export const openingsRepo = {
     const cards = readCards().filter(c => c.openingId !== id);
     localStorage.setItem(KEY_OPENINGS, JSON.stringify(openings));
     localStorage.setItem(KEY_CARDS, JSON.stringify(cards));
+    dropStudySyncFor(new Set([id]));
     invalidate();
   },
 };
+
+/** Remove the study mappings of deleted openings — without this they linger
+ * in localStorage forever and a re-created opening id could never collide,
+ * but a future push UI listing mappings would show ghosts. */
+function dropStudySyncFor(openingIds: Set<string>): void {
+  const all = readStudySync();
+  const kept = Object.fromEntries(
+    Object.entries(all).filter(([openingId]) => !openingIds.has(openingId)),
+  );
+  if (Object.keys(kept).length === Object.keys(all).length) return;
+  localStorage.setItem(KEY_STUDY_SYNC, JSON.stringify(kept));
+}
 
 export const cardsRepo = {
   list: readCards,
@@ -200,6 +214,30 @@ export const foldersRepo = {
     localStorage.setItem(KEY_FOLDERS, JSON.stringify(folders));
     localStorage.setItem(KEY_OPENINGS, JSON.stringify(remainingOpenings));
     localStorage.setItem(KEY_CARDS, JSON.stringify(remainingCards));
+    dropStudySyncFor(removedOpeningIds);
     invalidate();
   },
 };
+
+/** Everything the backup covers, read through the caches so migrations are
+ * already applied. */
+export function snapshotAll(): BackupData {
+  return {
+    openings: readOpenings(),
+    cards: readCards(),
+    reviews: readReviews(),
+    folders: readFolders(),
+    studySync: readStudySync(),
+  };
+}
+
+/** Replace the whole store with a backup's content. Restore semantics are
+ * REPLACE, not merge — predictable, and the confirm dialog says so. */
+export function restoreAll(data: BackupData): void {
+  localStorage.setItem(KEY_OPENINGS, JSON.stringify(data.openings));
+  localStorage.setItem(KEY_CARDS, JSON.stringify(data.cards));
+  localStorage.setItem(KEY_REVIEWS, JSON.stringify(data.reviews));
+  localStorage.setItem(KEY_FOLDERS, JSON.stringify(data.folders));
+  localStorage.setItem(KEY_STUDY_SYNC, JSON.stringify(data.studySync));
+  invalidate();
+}

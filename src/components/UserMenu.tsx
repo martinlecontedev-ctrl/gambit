@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { backupSummary, buildBackup, parseBackup } from '../domain/backup';
 import { THEMES, setTheme, useTheme } from '../domain/theme';
+import { restoreAll, snapshotAll } from '../storage/repository';
 
 /**
  * User button in the header + preferences panel. The panel is a floating
  * CARD (surface family) even though the button lives on the header/ground —
- * it will grow more sections over time; for now: theme choice.
+ * it will grow more sections over time; for now: theme choice + backup.
  */
 export function UserMenu() {
   const [open, setOpen] = useState(false);
@@ -40,7 +42,7 @@ export function UserMenu() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-11 z-50 w-72 rounded-card border border-line bg-surface p-4 shadow-card">
+          <div className="absolute right-0 top-11 z-50 w-72 rounded-card border border-line bg-surface p-4 text-ink shadow-card">
             <div className="mb-3 text-[11px] font-bold tracking-[0.14em] text-ink-muted uppercase">
               Thème
             </div>
@@ -66,7 +68,7 @@ export function UserMenu() {
                         style={{ background: t.preview.surface, boxShadow: '0 0 0 1px rgba(0,0,0,.08)' }}
                       />
                       <span
-                        className="absolute top-1.5 right-1.5 h-2 w-2 rounded-[2px]"
+                        className="absolute top-1.5 right-1.5 h-2 w-2 rounded-xs"
                         style={{ background: t.preview.board }}
                       />
                       <span
@@ -91,9 +93,99 @@ export function UserMenu() {
                 );
               })}
             </div>
+
+            <BackupSection />
           </div>
         </>
       )}
     </div>
+  );
+}
+
+/** Export/restore of the FULL local state (repertoires + SRS progress +
+ * history) — the PGN export loses all of that. Restore replaces everything. */
+function BackupSection() {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  const onExport = () => {
+    const backup = buildBackup(snapshotAll(), Date.now());
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gambit-sauvegarde-${backup.exportedAt.slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setMsg({ kind: 'ok', text: `Exporté : ${backupSummary(backup)}.` });
+  };
+
+  const onRestoreFile = async (file: File) => {
+    const res = parseBackup(await file.text());
+    if (!res.ok) {
+      setMsg({ kind: 'err', text: res.error });
+      return;
+    }
+    const exportedOn = res.backup.exportedAt
+      ? new Date(res.backup.exportedAt).toLocaleDateString('fr-FR')
+      : 'date inconnue';
+    const confirmed = window.confirm(
+      `Restaurer cette sauvegarde ?\n\n` +
+        `Fichier (${exportedOn}) : ${backupSummary(res.backup)}\n` +
+        `Actuellement : ${backupSummary(snapshotAll())}\n\n` +
+        `Toutes les données actuelles seront REMPLACÉES.`,
+    );
+    if (!confirmed) return;
+    restoreAll(res.backup);
+    setMsg({ kind: 'ok', text: 'Sauvegarde restaurée.' });
+  };
+
+  return (
+    <>
+      <div className="mt-4 mb-2 text-[11px] font-bold tracking-[0.14em] text-ink-muted uppercase">
+        Données
+      </div>
+      <div className="flex gap-1.5">
+        <button
+          onClick={onExport}
+          className="flex-1 rounded-btn border border-chip-border bg-chip px-2 py-1.5 text-[12.5px] font-semibold text-chip-text transition hover:border-chip-hover"
+        >
+          Exporter
+        </button>
+        <button
+          onClick={() => fileRef.current?.click()}
+          className="flex-1 rounded-btn border border-chip-border bg-chip px-2 py-1.5 text-[12.5px] font-semibold text-chip-text transition hover:border-chip-hover"
+        >
+          Restaurer…
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={e => {
+            const file = e.target.files?.[0];
+            // Reset so picking the same file twice re-triggers onChange.
+            e.target.value = '';
+            if (file) void onRestoreFile(file);
+          }}
+        />
+      </div>
+      <p className="mt-2 text-[11.5px] leading-snug text-meta">
+        Fichier complet : répertoires, progrès de révision, historique,
+        dossiers. Le compte Lichess et les réglages locaux ne sont pas inclus.
+      </p>
+      {msg && (
+        <p
+          className={`mt-1.5 text-[11.5px] font-semibold ${
+            msg.kind === 'ok' ? 'text-success' : 'text-danger'
+          }`}
+        >
+          {msg.text}
+        </p>
+      )}
+    </>
   );
 }

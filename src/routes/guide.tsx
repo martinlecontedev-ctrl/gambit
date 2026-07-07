@@ -14,6 +14,7 @@ const TOC = [
   { id: 'g-study', label: 'Étude' },
   { id: 'g-folders', label: 'Dossiers' },
   { id: 'g-io', label: 'Import / Export' },
+  { id: 'g-backup', label: 'Sauvegarde' },
 ];
 
 function Guide() {
@@ -297,6 +298,39 @@ function Guide() {
               l'ouverture courante — une partie par chapitre — avec variantes,
               commentaires, NAGs et flèches. Compatible Lichess Study, ChessBase
               et tout autre lecteur PGN.
+            </Item>
+          </Section>
+
+          <Section id="g-backup" title="Sauvegarde et restauration">
+            <Item>
+              Toutes tes données vivent <strong>dans ce navigateur</strong>{' '}
+              (localStorage) : un nettoyage des données de navigation, un
+              changement de machine ou de navigateur efface tout. La sauvegarde
+              est ta seule protection.
+            </Item>
+            <Item>
+              Bouton utilisateur en haut à droite → <Kbd>Exporter</Kbd> :
+              télécharge un fichier <Code>gambit-sauvegarde-AAAA-MM-JJ.json</Code>{' '}
+              contenant l'intégralité de l'état — ouvertures (chapitres,
+              variantes, annotations, fenêtres de révision), progrès de
+              révision de chaque carte, historique d'un an, dossiers et liens
+              vers tes études Lichess.
+            </Item>
+            <Item>
+              <Kbd>Restaurer…</Kbd> recharge un de ces fichiers.{' '}
+              <strong>La restauration remplace tout</strong> (pas de fusion) —
+              une confirmation compare d'abord le contenu du fichier à l'état
+              actuel.
+            </Item>
+            <Item>
+              Non inclus : le compte Lichess (reconnecte-toi simplement) et les
+              réglages propres à l'appareil (thème, moteur, explorateur).
+            </Item>
+            <Item>
+              Ne confonds pas avec l'export <Code>PGN</Code> : lui ne couvre
+              que la structure d'une ouverture et{' '}
+              <em>perd tout le progrès de révision</em>. Exporte une sauvegarde
+              régulièrement — avant un gros import, c'est deux clics.
             </Item>
           </Section>
         </div>
