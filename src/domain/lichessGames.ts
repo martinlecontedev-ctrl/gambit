@@ -79,9 +79,12 @@ export function parseGamesNdjson(body: string, username: string): RecentGame[] {
   return games;
 }
 
-/** Session cache shared by the Lichess tab and the editor header — one games
- * request per session unless explicitly refreshed. */
-let cache: { username: string; games: RecentGame[] } | null = null;
+/** Session cache shared by the Lichess tab and the fidelity cards. Expires
+ * after a short TTL so a long-lived SPA still sees new games — without it,
+ * a leak acknowledged "Révisé ✓" could never reopen after a fresh miss
+ * until a full page reload. */
+const CACHE_TTL_MS = 10 * 60 * 1000;
+let cache: { username: string; games: RecentGame[]; at: number } | null = null;
 
 export async function fetchRecentGames(
   username: string,
@@ -104,7 +107,7 @@ export async function fetchRecentGames(
   );
   if (!res.ok) throw new Error(`Lichess games HTTP ${res.status}`);
   const games = parseGamesNdjson(await res.text(), username);
-  cache = { username: username.toLowerCase(), games };
+  cache = { username: username.toLowerCase(), games, at: Date.now() };
   return games;
 }
 
@@ -113,6 +116,11 @@ export async function fetchRecentGamesCached(
   token: string,
   max = 15,
 ): Promise<RecentGame[]> {
-  if (cache?.username === username.toLowerCase()) return cache.games;
+  if (
+    cache?.username === username.toLowerCase() &&
+    Date.now() - cache.at < CACHE_TTL_MS
+  ) {
+    return cache.games;
+  }
   return fetchRecentGames(username, token, max);
 }

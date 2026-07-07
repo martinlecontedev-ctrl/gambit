@@ -35,8 +35,11 @@ export type PlayedOpeningStat = {
   /** Most frequently played UCI prefix reaching the family's recognized
    * depth — the seed for a fresh repertoire. */
   seedUcis: string[];
-  /** Position key at the ply where the family FIRST matched — the right
-   * depth to test "is this family already covered by the repertoire". */
+  /** Position key where the family FIRST matched ALONG THE WINNING SEED —
+   * the right depth to test "is this family already covered by the
+   * repertoire". Tied to the seed route: a repertoire created from the seed
+   * is guaranteed to pass through it, so the "create" button flips to
+   * covered right after creation. */
   familyKey: string;
 };
 
@@ -50,8 +53,11 @@ const keyAtPly = (ucis: string[], ply: number): string => {
 export async function aggregatePlayedOpenings(
   games: RecentGame[],
 ): Promise<PlayedOpeningStat[]> {
-  type Acc = Omit<PlayedOpeningStat, 'seedUcis'> & {
-    seedVotes: Map<string, number>;
+  type Acc = Omit<PlayedOpeningStat, 'seedUcis' | 'familyKey'> & {
+    /** One entry per distinct in-book route, with the ply where the family
+     * first matched along THAT route — the winning route provides both the
+     * seed and the coverage key, so they can never disagree. */
+    seedVotes: Map<string, { votes: number; familyPly: number }>;
   };
   const acc = new Map<string, Acc>();
 
@@ -75,7 +81,6 @@ export async function aggregatePlayedOpenings(
         wins: 0,
         draws: 0,
         losses: 0,
-        familyKey: keyAtPly(ucis, familyFirst.ply),
         seedVotes: new Map(),
       };
       acc.set(k, a);
@@ -85,19 +90,24 @@ export async function aggregatePlayedOpenings(
     else if (game.result === 'draw') a.draws++;
     else a.losses++;
     const seed = ucis.slice(0, deepest.ply).join(' ');
-    a.seedVotes.set(seed, (a.seedVotes.get(seed) ?? 0) + 1);
+    const vote = a.seedVotes.get(seed);
+    if (vote) vote.votes++;
+    else a.seedVotes.set(seed, { votes: 1, familyPly: familyFirst.ply });
   }
 
   const out: PlayedOpeningStat[] = [];
   for (const a of acc.values()) {
     let bestSeed = '';
+    let bestFamilyPly = 0;
     let bestVotes = -1;
-    for (const [seed, votes] of a.seedVotes) {
+    for (const [seed, { votes, familyPly }] of a.seedVotes) {
       if (votes > bestVotes) {
         bestVotes = votes;
         bestSeed = seed;
+        bestFamilyPly = familyPly;
       }
     }
+    const seedUcis = bestSeed ? bestSeed.split(' ') : [];
     out.push({
       name: a.name,
       eco: a.eco,
@@ -106,8 +116,8 @@ export async function aggregatePlayedOpenings(
       wins: a.wins,
       draws: a.draws,
       losses: a.losses,
-      familyKey: a.familyKey,
-      seedUcis: bestSeed ? bestSeed.split(' ') : [],
+      familyKey: keyAtPly(seedUcis, bestFamilyPly),
+      seedUcis,
     });
   }
   return out.sort((x, y) => y.games - x.games);

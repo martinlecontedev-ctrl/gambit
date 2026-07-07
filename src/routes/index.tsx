@@ -839,11 +839,11 @@ function OpeningCard({
           Réviser
         </Link>
         <Link
-          to="/openings/$openingId/edit"
+          to="/openings/$openingId"
           params={{ openingId: opening.id }}
           className="flex h-10.5 flex-1 items-center justify-center rounded-[10px] border border-line-strong bg-surface-high text-sm font-semibold text-ink transition hover:bg-field"
         >
-          Éditer
+          Ouvrir
         </Link>
       </div>
     </li>
@@ -915,7 +915,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
         openingsRepo.save(valid[0].opening);
         onClose();
         navigate({
-          to: '/openings/$openingId/edit',
+          to: '/openings/$openingId',
           params: { openingId: valid[0].opening.id },
         });
       } else {

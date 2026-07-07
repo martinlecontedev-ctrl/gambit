@@ -4,6 +4,7 @@ import {
   chessFromFen,
   fenOf,
   positionKey,
+  sameMove,
   START_FEN,
   turnColor,
 } from './chess';
@@ -144,6 +145,64 @@ export function buildCards(
   }
 
   return out;
+}
+
+const plyInRanges = (
+  ranges: { start: number; end?: number }[],
+  ply: number,
+): boolean =>
+  ranges.some(r => ply >= r.start && (r.end === undefined || ply < r.end));
+
+/** Sort + merge intervals; an open-ended one swallows everything after it. */
+function mergeRanges(
+  ranges: { start: number; end?: number }[],
+): { start: number; end?: number }[] {
+  const sorted = [...ranges].sort((a, b) => a.start - b.start);
+  const out: { start: number; end?: number }[] = [];
+  for (const r of sorted) {
+    const last = out[out.length - 1];
+    if (last && (last.end === undefined || r.start <= last.end)) {
+      if (last.end !== undefined) {
+        last.end = r.end === undefined ? undefined : Math.max(last.end, r.end);
+      }
+    } else {
+      out.push({ ...r });
+    }
+  }
+  return out;
+}
+
+/**
+ * Widen review windows so `card`'s move is back in the regular rotation:
+ * every line of the card's chapter that plays `expectedUci` on the card's
+ * position gets that ply folded into its `reviewRanges`. Lines without
+ * stored ranges are already fully covered and stay untouched. Returns the
+ * same opening object when nothing needed widening.
+ */
+export function coverCardInReviewRanges(opening: Opening, card: Card): Opening {
+  const chapter = opening.chapters.find(c => c.id === card.chapterId);
+  if (!chapter) return opening;
+  const key = positionKey(card.fen);
+  let changed = false;
+  const lines = opening.lines.map(line => {
+    if (line.chapterId !== card.chapterId || !line.reviewRanges) return line;
+    let ranges = line.reviewRanges;
+    let chess = chessFromFen(chapter.startFen ?? START_FEN);
+    for (let i = 0; i < line.moves.length; i++) {
+      if (
+        positionKey(fenOf(chess)) === key &&
+        sameMove(chess, line.moves[i], card.expectedUci) &&
+        !plyInRanges(ranges, i)
+      ) {
+        ranges = mergeRanges([...ranges, { start: i, end: i + 1 }]);
+      }
+      chess = applyUci(chess, line.moves[i]);
+    }
+    if (ranges === line.reviewRanges) return line;
+    changed = true;
+    return { ...line, reviewRanges: ranges };
+  });
+  return changed ? { ...opening, lines } : opening;
 }
 
 export type OpeningStats = {

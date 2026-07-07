@@ -131,6 +131,18 @@ function LichessPage() {
     if (!latest) return;
     const line = latest.lines.find(l => l.id === target.lineId);
     if (!line) return;
+    // Already grafted (double-click, or the novelty was added from another
+    // game): reuse the existing line instead of stacking identical variants.
+    const full = [...verdict.path, verdict.playedUci];
+    const existing = findLineForPath([latest], latest.color, full);
+    if (existing) {
+      navigate({
+        to: '/openings/$openingId/edit',
+        params: { openingId: existing.openingId },
+        search: { line: existing.lineId, ply: full.length },
+      });
+      return;
+    }
     const chapterLines = latest.lines.filter(l => l.chapterId === line.chapterId);
     const parent = parentForNewVariant(chapterLines, line, verdict.path.length);
     const variant: Line = {
@@ -138,7 +150,7 @@ function LichessPage() {
       name: 'Variante',
       chapterId: line.chapterId,
       parentLineId: parent.id,
-      moves: [...verdict.path, verdict.playedUci],
+      moves: full,
     };
     openingsRepo.save({
       ...latest,
@@ -232,6 +244,12 @@ function LichessPage() {
 
   /** Fresh repertoire seeded with the user's own most-played moves. */
   const createRepertoire = (stat: PlayedOpeningStat) => {
+    // Double-click / already-created guard: never silently stack a
+    // same-named opening.
+    if (openings.some(o => o.name === stat.name)) {
+      alert(`Une ouverture nommée « ${stat.name} » existe déjà.`);
+      return;
+    }
     const now = Date.now();
     const chapterId = crypto.randomUUID();
     const lineId = crypto.randomUUID();

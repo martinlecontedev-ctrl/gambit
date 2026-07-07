@@ -28,7 +28,7 @@ import {
 } from './chess';
 import { buildRepertoireBook, type RepertoireBook } from './deviation';
 import { familyOf, openingAtKey } from './openings-db';
-import type { Color, Opening } from './types';
+import type { Card, Color, Opening, ReviewEvent } from './types';
 
 type GameLike = {
   sans: string[];
@@ -53,7 +53,13 @@ type Walk = {
 };
 
 /** Walk one game through one opening's own book, recording every user
- * decision taken while still in book (including the one that leaves it). */
+ * decision taken while still in book (including the one that leaves it).
+ * Mirrors `analyzeGame`'s transposition rule: a move that is not a book
+ * edge but lands on a covered position (a sibling line reaches it in
+ * another move order) counts as followed and the walk continues —
+ * otherwise the user's own repertoire move shows up as a phantom leak,
+ * the remaining decisions are lost, and an opening covering the literal
+ * move order steals the game's attribution. */
 function walkGame(sans: string[], userColor: Color, book: RepertoireBook): Walk {
   let chess = chessFromFen(START_FEN);
   let ply = 0;
@@ -68,7 +74,11 @@ function walkGame(sans: string[], userColor: Color, book: RepertoireBook): Walk 
     const move = parseSan(chess, san);
     if (!move) return { depth: ply, exit: 'held', decisions };
     const uci = makeUci(move);
-    const matched = expected.some(e => sameMove(chess, e, uci));
+    const next = chess.clone();
+    next.play(move);
+    const matched =
+      expected.some(e => sameMove(chess, e, uci)) ||
+      (book.get(positionKey(fenOf(next)))?.length ?? 0) > 0;
     const isUser = turnColor(chess) === userColor;
     if (isUser) {
       decisions.push({
@@ -83,8 +93,6 @@ function walkGame(sans: string[], userColor: Color, book: RepertoireBook): Walk 
     if (!matched) {
       return { depth: ply, exit: isUser ? 'user' : 'opponent', decisions };
     }
-    const next = chess.clone();
-    next.play(move);
     chess = next;
     ply++;
   }
@@ -95,6 +103,9 @@ export type LeakPosition = {
   key: string;
   ply: number;
   expectedSans: string[];
+  /** Same moves as `expectedSans`, in UCI (repertoire spelling) — what the
+   * SRS acknowledgment matches cards against. */
+  expectedUcis: string[];
   /** Times the position came up in attributed games. */
   seen: number;
   /** Times the repertoire move was played there. */
@@ -103,6 +114,9 @@ export type LeakPosition = {
   missSan: string;
   missTopCount: number;
   missCount: number;
+  /** When the position was last missed in a game (ms epoch) — the reference
+   * point for "has this been drilled since". */
+  lastMissAt: number;
 };
 
 export type AdherenceReport = {
@@ -152,9 +166,11 @@ export function buildAdherenceReport(
     key: string;
     ply: number;
     expectedSans: string[];
+    expectedUcis: string[];
     seen: number;
     followed: number;
     misses: Map<string, number>;
+    lastMissAt: number;
   };
   const byPosition = new Map<string, Agg>();
 
@@ -187,15 +203,20 @@ export function buildAdherenceReport(
           key: d.key,
           ply: d.ply,
           expectedSans: d.expectedSans,
+          expectedUcis: d.expectedUcis,
           seen: 0,
           followed: 0,
           misses: new Map(),
+          lastMissAt: 0,
         };
         byPosition.set(d.key, agg);
       }
       agg.seen++;
       if (d.matched) agg.followed++;
-      else agg.misses.set(d.playedSan, (agg.misses.get(d.playedSan) ?? 0) + 1);
+      else {
+        agg.misses.set(d.playedSan, (agg.misses.get(d.playedSan) ?? 0) + 1);
+        agg.lastMissAt = Math.max(agg.lastMissAt, game.createdAt);
+      }
     }
   }
 
@@ -217,15 +238,47 @@ export function buildAdherenceReport(
       key: agg.key,
       ply: agg.ply,
       expectedSans: agg.expectedSans,
+      expectedUcis: agg.expectedUcis,
       seen: agg.seen,
       followed: agg.followed,
       missSan,
       missTopCount: missCount,
       missCount: missTotal,
+      lastMissAt: agg.lastMissAt,
     });
   }
   report.leaks.sort((a, b) => b.missCount - a.missCount || a.ply - b.ply);
   return report;
+}
+
+/**
+ * Has this leak been successfully drilled SINCE the last game that missed
+ * it? Cross-references the SRS log: any passing grade (>= 3) on a card at
+ * the leak's position whose expected move is one the leak actually expects,
+ * logged after the latest miss, acknowledges the leak — whatever opening
+ * the card belongs to (a transposing repertoire drills the same knowledge).
+ * Cards drilling a DIFFERENT reply on the same position (another chapter's
+ * theory) do not count. A newer game missing the position again post-dates
+ * the review and reopens it — no state to store, the two timelines decide.
+ */
+export function leakReviewedSince(
+  leak: LeakPosition,
+  cards: Card[],
+  reviews: ReviewEvent[],
+): boolean {
+  const ids = new Set(
+    cards
+      .filter(c => {
+        if (positionKey(c.fen) !== leak.key) return false;
+        const chess = chessFromFen(c.fen);
+        return leak.expectedUcis.some(u => sameMove(chess, u, c.expectedUci));
+      })
+      .map(c => c.id),
+  );
+  if (ids.size === 0) return false;
+  return reviews.some(
+    r => r.ts > leak.lastMissAt && r.grade >= 3 && ids.has(r.cardId),
+  );
 }
 
 export type RefinedLeak = LeakPosition &

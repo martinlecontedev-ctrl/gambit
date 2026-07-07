@@ -12,13 +12,18 @@ function NewOpening() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (openingsRepo.list().some(o => o.name === trimmed)) {
+      alert(`Une ouverture nommée « ${trimmed} » existe déjà.`);
+      return;
+    }
     const id = crypto.randomUUID();
     const now = Date.now();
     const chapterId = crypto.randomUUID();
     const opening: Opening = {
       id,
-      name: name.trim(),
+      name: trimmed,
       color,
       chapters: [{ id: chapterId, name: 'Principal', order: 0 }],
       lines: [

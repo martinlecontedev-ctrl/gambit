@@ -1,71 +1,41 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import {
-  Fragment,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import { createFileRoute, Link, useBlocker } from '@tanstack/react-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Chess } from 'chessops/chess';
 import type { Config } from '@lichess-org/chessground/config';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import type { Key } from '@lichess-org/chessground/types';
 import { Chessboard } from '../components/Chessboard';
-import { FigurineSan } from '../components/FigurineSan';
-import { Modal } from '../components/Modal';
 import { NagSquareBadge } from '../components/NagSquareBadge';
+import { BoardNav } from '../components/opening/BoardNav';
+import { ChapterNameModal } from '../components/opening/ChapterNameModal';
+import { ExplorerPanel } from '../components/opening/ExplorerPanel';
+import { OpeningNotFound } from '../components/opening/OpeningNotFound';
+import { RecognitionBar } from '../components/opening/RecognitionBar';
+import { SelectedLineView } from '../components/opening/SelectedLineView';
+import { useLineNavigation } from '../components/opening/useLineNavigation';
 import {
-  applyUci,
-  chessFromFen,
   fenOf,
   legalDests,
-  lineToSan,
-  moveNumberLabel,
   positionKey,
   sameMove,
-  START_FEN,
   turnColor,
   uciFromMove,
   uciToSanAt,
 } from '../domain/chess';
 import { engine, type EngineResult } from '../domain/engine';
-import {
-  ExplorerRateLimited,
-  ExplorerUnauthorized,
-  fetchExplorer,
-  type ExplorerMoveStats,
-  type ExplorerResult,
-  type ExplorerSource,
-} from '../domain/explorer';
-import {
-  buildAdherenceReport,
-  refineAdherence,
-  type RefinedAdherence,
-} from '../domain/adherence';
-import { getAccount, login, subscribeAccount } from '../domain/lichessAuth';
-import { fetchRecentGamesCached, type RecentGame } from '../domain/lichessGames';
 import { NAG_COLORS, NAG_LABELS, NAG_ORDER, NAG_SYMBOLS } from '../domain/nag';
-import { recognizeOpening, type Opening as RecognizedOpening } from '../domain/openings-db';
-import { exportToPgn } from '../domain/pgn';
-import {
-  buildPrefixTrie,
-  continuationsAt,
-  effectiveParentId,
-  parentForNewVariant,
-  segmentLines,
-} from '../domain/tree';
+import { recognizeOpening } from '../domain/openings-db';
+import { parentForNewVariant } from '../domain/tree';
 import type {
   Annotation,
   ArrowBrush,
   ArrowDef,
   Chapter,
-  Color,
   Line,
   Nag,
   Opening,
 } from '../domain/types';
-import { cardsRepo, openingsRepo } from '../storage/repository';
+import { openingsRepo } from '../storage/repository';
 import { useStored } from '../storage/store';
 
 const KNOWN_BRUSHES: ArrowBrush[] = [
@@ -85,8 +55,9 @@ type EditSearch = { line?: string; ply?: number };
 
 export const Route = createFileRoute('/openings/$openingId/edit')({
   component: EditOpening,
-  // Optional deep link (e.g. from the Lichess deviations tab): land on a
-  // given line with the cursor at a given ply.
+  // Optional deep link (e.g. from the Lichess deviations tab or the
+  // overview's "Éditer" CTA): land on a given line with the cursor at a
+  // given ply.
   validateSearch: (search: Record<string, unknown>): EditSearch => ({
     line: typeof search.line === 'string' ? search.line : undefined,
     ply: typeof search.ply === 'number' ? search.ply : undefined,
@@ -97,7 +68,7 @@ function EditOpening() {
   const { openingId } = Route.useParams();
   const { line, ply } = Route.useSearch();
   const opening = useStored(() => openingsRepo.get(openingId));
-  if (!opening) return <NotFound />;
+  if (!opening) return <OpeningNotFound />;
   return (
     <EditOpeningInner
       key={opening.id}
@@ -105,17 +76,6 @@ function EditOpening() {
       initialLineId={line}
       initialPly={ply}
     />
-  );
-}
-
-function NotFound() {
-  return (
-    <main className="mx-auto max-w-md px-10 py-16 text-center text-ink-soft">
-      Ouverture introuvable.{' '}
-      <Link to="/" className="font-semibold text-accent underline">
-        Retour
-      </Link>
-    </main>
   );
 }
 
@@ -128,156 +88,54 @@ function EditOpeningInner({
   initialLineId?: string;
   initialPly?: number;
 }) {
-  const navigate = useNavigate();
-  const initialLine =
-    (initialLineId && opening.lines.find(l => l.id === initialLineId)) ||
-    opening.lines[0];
-  const [selectedLineId, setSelectedLineId] = useState<string>(initialLine?.id ?? '');
-  const [cursorIdx, setCursorIdx] = useState<number>(() => {
-    const len = initialLine?.moves.length ?? 0;
-    return initialPly !== undefined
-      ? Math.min(Math.max(0, initialPly), len)
-      : len;
+  // The editor works on an in-memory draft: nothing touches storage until
+  // "Enregistrer". The ref is updated synchronously by every mutation, so
+  // two handlers firing on the same tick (arrow drawn → move played) never
+  // read a stale draft — the guarantee the fresh-repo re-read used to give.
+  const [draft, setDraftState] = useState<Opening>(opening);
+  const draftRef = useRef(opening);
+  const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(false);
+  const setDraft = (next: Opening) => {
+    draftRef.current = next;
+    setDraftState(next);
+    dirtyRef.current = true;
+    setDirty(true);
+  };
+
+  const save = () => {
+    openingsRepo.save({ ...draftRef.current, updatedAt: Date.now() });
+    dirtyRef.current = false;
+    setDirty(false);
+  };
+
+  // Block in-app navigation (and tab close via beforeunload) while unsaved.
+  useBlocker({
+    shouldBlockFn: () =>
+      dirtyRef.current &&
+      !confirm('Modifications non enregistrées. Quitter sans enregistrer ?'),
+    enableBeforeUnload: () => dirtyRef.current,
   });
 
-  useEffect(() => {
-    if (!opening.lines.find(l => l.id === selectedLineId)) {
-      const fallback = opening.lines[0]?.id ?? '';
-      setSelectedLineId(fallback);
-      setCursorIdx(0);
-    }
-  }, [opening.lines, selectedLineId]);
-
-  const line = opening.lines.find(l => l.id === selectedLineId);
-
-  /** Chapter the user is currently working in. Drives the per-chapter trie,
-   * the visible scoresheet and where new variants land. */
-  const currentChapterId = line?.chapterId ?? opening.chapters[0]?.id;
-  const currentChapter = opening.chapters.find(c => c.id === currentChapterId);
-  /** Starting position the chapter's lines are sequenced from. Lichess study
-   * chapters often start past the initial position via `[FEN …]`. */
-  const chapterStartFen = currentChapter?.startFen ?? START_FEN;
-
-  const chapterLines = useMemo(
-    () =>
-      currentChapterId
-        ? opening.lines.filter(l => l.chapterId === currentChapterId)
-        : [],
-    [opening.lines, currentChapterId],
-  );
-
-  const chess = useMemo(() => {
-    let c = chessFromFen(chapterStartFen);
-    const upTo = line?.moves.slice(0, cursorIdx) ?? [];
-    for (const m of upTo) c = applyUci(c, m);
-    return c;
-  }, [line, cursorIdx, chapterStartFen]);
-
-  const trie = useMemo(() => buildPrefixTrie(chapterLines), [chapterLines]);
-
-  const rootLine = useMemo(
-    () => chapterLines.find(l => !effectiveParentId(chapterLines, l)),
-    [chapterLines],
-  );
-
-  // Keyboard navigation through the current line. Skipped when the focus is
-  // inside a text input (annotation textarea, folder rename, etc.) so the
-  // arrows still type / move the caret normally.
-  const lineLength = line?.moves.length ?? 0;
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (
-        t &&
-        (t.tagName === 'INPUT' ||
-          t.tagName === 'TEXTAREA' ||
-          t.isContentEditable)
-      ) {
-        return;
-      }
-      switch (e.key) {
-        case 'ArrowLeft':
-          e.preventDefault();
-          setCursorIdx(c => Math.max(0, c - 1));
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          setCursorIdx(c => Math.min(lineLength, c + 1));
-          break;
-        case 'Home':
-          e.preventDefault();
-          setCursorIdx(0);
-          break;
-        case 'End':
-          e.preventDefault();
-          setCursorIdx(lineLength);
-          break;
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [lineLength]);
-
-  /** SAN sequence of the selected line — sequenced from the chapter's
-   * starting FEN so custom-start Lichess chapters resolve correctly. */
-  const sansOfSelected = useMemo(
-    () => (line ? lineToSan(line.moves, chapterStartFen) : []),
-    [line, chapterStartFen],
-  );
-
-  /** FEN at each cursor position along the selected line — used to render
-   * chip SAN for alternative continuations seen in sibling lines. Honours
-   * the chapter's custom starting FEN. */
-  const fenAtPosition = useMemo(() => {
-    const m = new Map<number, string>();
-    let chess = chessFromFen(chapterStartFen);
-    m.set(0, fenOf(chess));
-    if (!line) return m;
-    for (let i = 0; i < line.moves.length; i++) {
-      chess = applyUci(chess, line.moves[i]);
-      m.set(i + 1, fenOf(chess));
-    }
-    return m;
-  }, [line, chapterStartFen]);
-
-  const currentFen = useMemo(() => fenOf(chess), [chess]);
-
-  /**
-   * Annotations re-indexed by canonical position key, so transpositions and
-   * any legacy entries stored under the full FEN all resolve to the same
-   * lookup. Conflicts (rare: two old keys for the same position with
-   * different fields) are merged with later overriding earlier.
-   */
-  const annotationsByPositionKey = useMemo(() => {
-    const m = new Map<string, Annotation>();
-    for (const [k, v] of Object.entries(opening.annotations ?? {})) {
-      const pk = positionKey(k);
-      const existing = m.get(pk);
-      m.set(pk, existing ? { ...existing, ...v } : v);
-    }
-    return m;
-  }, [opening.annotations]);
-
-  const currentAnnotation = annotationsByPositionKey.get(positionKey(currentFen));
-
-  // --- Opening recognition --------------------------------------------------
-  // Position-based, like lichess/chess.com: we walk the current line up to
-  // the cursor and surface the deepest ECO entry encountered. Position-keyed
-  // lookup means transpositions resolve to the same name.
-  const [recognizedOpening, setRecognizedOpening] = useState<RecognizedOpening | null>(null);
-  useEffect(() => {
-    if (!line) {
-      setRecognizedOpening(null);
-      return;
-    }
-    let cancelled = false;
-    recognizeOpening(line.moves, cursorIdx, chapterStartFen).then(found => {
-      if (!cancelled) setRecognizedOpening(found);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [line, cursorIdx, chapterStartFen]);
+  const {
+    line,
+    selectedLineId,
+    cursorIdx,
+    setCursorIdx,
+    selectLine,
+    switchToChapter,
+    currentChapter,
+    chapterStartFen,
+    sortedChapters,
+    chess,
+    currentFen,
+    trie,
+    rootLine,
+    sansOfSelected,
+    fenAtPosition,
+    currentAnnotation,
+    nagsAlongLine,
+  } = useLineNavigation(draft, { lineId: initialLineId, ply: initialPly });
 
   // --- Stockfish engine ----------------------------------------------------
   // Toggle persists across reloads. The Worker is module-level (single
@@ -399,30 +257,15 @@ function EditOpeningInner({
     return (score >= 0 ? '+' : '') + score.toFixed(2);
   }, [engineEnabled, engineResult, currentFen, chess]);
 
-  /** NAG per ply index in the current line — fed to the scoresheet so the
-   * judgement glyph shows next to the move that earned it. */
-  const nagsAlongLine = useMemo(() => {
-    const m = new Map<number, Nag>();
-    if (!line) return m;
-    for (let i = 0; i < line.moves.length; i++) {
-      const f = fenAtPosition.get(i + 1);
-      if (!f) continue;
-      const nag = annotationsByPositionKey.get(positionKey(f))?.nag;
-      if (nag !== undefined) m.set(i, nag);
-    }
-    return m;
-  }, [line, fenAtPosition, annotationsByPositionKey]);
-
   /**
-   * Apply a mutation against the **freshest** opening from storage rather
-   * than the closure copy. Without this, two writes triggered in quick
-   * succession (e.g. arrow drawn → move played) race on the closure-captured
-   * opening and the later save silently drops the earlier change.
+   * Apply a mutation against the **freshest** draft (the synchronously
+   * updated ref) rather than a closure copy. Without this, two writes
+   * triggered in quick succession (e.g. arrow drawn → move played) race on
+   * the closure-captured draft and the later one silently drops the earlier
+   * change.
    */
   const updateOpening = (mutator: (latest: Opening) => Opening) => {
-    const latest = openingsRepo.get(opening.id);
-    if (!latest) return;
-    openingsRepo.save({ ...mutator(latest), updatedAt: Date.now() });
+    setDraft(mutator(draftRef.current));
   };
 
   /**
@@ -458,9 +301,9 @@ function EditOpeningInner({
   };
 
   /** Pending "create a new chapter" prompt. Non-null means the modal is
-   * open: `seedMoves` is what the new chapter's root line will hold (empty
-   * for manual creation, or the full move sequence up to a forced fork);
-   * `defaultName` is what we prefill into the name input. */
+   * open: `seedMoves` is what the new chapter's root line will hold (the
+   * full move sequence up to a forced fork); `defaultName` is what we
+   * prefill into the name input. */
   const [chapterModal, setChapterModal] = useState<{
     seedMoves: string[];
     defaultName: string;
@@ -472,20 +315,18 @@ function EditOpeningInner({
       setCursorIdx(cursorIdx + 1);
       return;
     }
-    // Resolve everything against the freshest opening to avoid clobbering a
-    // sibling mutation (e.g. arrows just persisted by drawable.onChange).
-    const latest = openingsRepo.get(opening.id);
-    if (!latest) return;
+    // Resolve everything against the freshest draft to avoid clobbering a
+    // sibling mutation (e.g. arrows just recorded by drawable.onChange).
+    const latest = draftRef.current;
     const latestLine = latest.lines.find(l => l.id === line.id);
     if (!latestLine) return;
 
     if (cursorIdx === latestLine.moves.length) {
-      openingsRepo.save({
+      setDraft({
         ...latest,
         lines: latest.lines.map(l =>
           l.id === latestLine.id ? { ...l, moves: [...l.moves, uci] } : l,
         ),
-        updatedAt: Date.now(),
       });
       setCursorIdx(cursorIdx + 1);
       return;
@@ -504,8 +345,7 @@ function EditOpeningInner({
         prefix.every((m, i) => l.moves[i] === m),
     );
     if (existing) {
-      setSelectedLineId(existing.id);
-      setCursorIdx(cursorIdx + 1);
+      selectLine(existing.id, cursorIdx + 1);
       return;
     }
 
@@ -518,7 +358,7 @@ function EditOpeningInner({
     // e.g. "King's Knight Opening: Normal Variation 3. Nc3"; the user just
     // hits Enter for the common case. Falls back to the current chapter
     // name when the position isn't in the ECO dataset.
-    if (turnColor(chess) === opening.color) {
+    if (turnColor(chess) === draft.color) {
       // chess.fullmoves + turnColor(chess) reflect the real move number and
       // side at the current position even when the chapter started past the
       // initial position (custom Lichess FEN).
@@ -530,7 +370,7 @@ function EditOpeningInner({
         latest.chapters.find(c => c.id === latestLine.chapterId)?.name ?? '';
       const seedMoves = [...prefix, uci];
       // Resolve the ECO name at the divergence position HERE instead of
-      // reading `recognizedOpening`: this handler lives in the chessground
+      // reading the recognition state: this handler lives in the chessground
       // config closure, which doesn't rebuild when the recognition state
       // lands — reading it would suggest the name of a stale position. The
       // dataset chunk is already loaded (the recognition effect ran on
@@ -560,13 +400,11 @@ function EditOpeningInner({
       parentLineId: parent.id,
       moves: [...prefix, uci],
     };
-    openingsRepo.save({
+    setDraft({
       ...latest,
       lines: [...latest.lines, variant],
-      updatedAt: Date.now(),
     });
-    setSelectedLineId(variant.id);
-    setCursorIdx(prefix.length + 1);
+    selectLine(variant.id, prefix.length + 1);
   };
 
   /** Commit the pending "new chapter" prompt: append a fresh Chapter + a root
@@ -576,41 +414,32 @@ function EditOpeningInner({
     if (!chapterModal) return;
     const trimmed = name.trim();
     if (!trimmed) return;
-    const latest = openingsRepo.get(opening.id);
-    if (!latest) {
-      setChapterModal(null);
-      return;
-    }
+    const latest = draftRef.current;
     // A FORCED fork on a custom-start chapter (e.g. user diverges inside a
     // Scotch line that already begins after `3.d4`) inherits the starting
     // FEN — the seedMoves are sequenced from there and need to replay
-    // correctly. A MANUAL "+ Nouveau chapitre" always resets to the
-    // standard initial position so the user gets a fresh board ready for
-    // their colour to move; otherwise inheriting a black-to-move custom
-    // FEN would lock the board when the user expects to start fresh.
-    const isForcedFork = chapterModal.seedMoves.length > 0;
-    const inheritedStartFen = isForcedFork ? currentChapter?.startFen : undefined;
+    // correctly.
+    const inheritedStartFen =
+      chapterModal.seedMoves.length > 0 ? currentChapter?.startFen : undefined;
     const chapter: Chapter = {
       id: crypto.randomUUID(),
       name: trimmed,
       order: latest.chapters.length,
       ...(inheritedStartFen ? { startFen: inheritedStartFen } : {}),
     };
-    const rootLine: Line = {
+    const newRoot: Line = {
       id: crypto.randomUUID(),
       name: 'Ligne principale',
       chapterId: chapter.id,
       parentLineId: undefined,
       moves: [...chapterModal.seedMoves],
     };
-    openingsRepo.save({
+    setDraft({
       ...latest,
       chapters: [...latest.chapters, chapter],
-      lines: [...latest.lines, rootLine],
-      updatedAt: Date.now(),
+      lines: [...latest.lines, newRoot],
     });
-    setSelectedLineId(rootLine.id);
-    setCursorIdx(rootLine.moves.length);
+    selectLine(newRoot.id, newRoot.moves.length);
     setChapterModal(null);
   };
 
@@ -625,7 +454,7 @@ function EditOpeningInner({
       })) ?? [];
     return {
       fen: fenOf(chess),
-      orientation: opening.color,
+      orientation: draft.color,
       turnColor: tc,
       lastMove: lastMoveUci
         ? [lastMoveUci.slice(0, 2) as Key, lastMoveUci.slice(2, 4) as Key]
@@ -668,7 +497,7 @@ function EditOpeningInner({
       },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chess, opening, line, cursorIdx, selectedLineId, currentAnnotation, currentFen, engineAutoShapes]);
+  }, [chess, draft, line, cursorIdx, selectedLineId, currentAnnotation, currentFen, engineAutoShapes]);
 
   /** Delete a line and re-parent its children to its own parent (no orphans). */
   const deleteLine = (id: string) => {
@@ -696,217 +525,77 @@ function EditOpeningInner({
     }));
   };
 
-  const removeOpening = () => {
-    if (!confirm('Supprimer cette ouverture ?')) return;
-    openingsRepo.delete(opening.id);
-    navigate({ to: '/' });
-  };
-
   const canDeleteVariant = !!line && line.id !== rootLine?.id;
-  const [exportOpen, setExportOpen] = useState(false);
-
-  const sortedChapters = useMemo(
-    () => [...opening.chapters].sort((a, b) => a.order - b.order),
-    [opening.chapters],
-  );
-
-  /** Jump to a chapter's root line, cursor at the start. */
-  const switchToChapter = (chapterId: string) => {
-    if (chapterId === currentChapterId) return;
-    const chapterLinesInTarget = opening.lines.filter(
-      l => l.chapterId === chapterId,
-    );
-    const root =
-      chapterLinesInTarget.find(
-        l => !effectiveParentId(chapterLinesInTarget, l),
-      ) ?? chapterLinesInTarget[0];
-    if (!root) return;
-    setSelectedLineId(root.id);
-    setCursorIdx(0);
-  };
-
-  // --- Chapter rename / delete --------------------------------------------
-  const [renamingChapterId, setRenamingChapterId] = useState<string | undefined>();
-  const [chapterRenameDraft, setChapterRenameDraft] = useState('');
-
-  // --- Per-chapter review window --------------------------------------------
-  const [rangeChapterId, setRangeChapterId] = useState<string | undefined>();
-  const rangeChapter = rangeChapterId
-    ? opening.chapters.find(c => c.id === rangeChapterId)
-    : undefined;
-
-  /** Persist the windows drafted in the modal. `undefined` clears a line's
-   * windows (JSON.stringify drops the undefined key on write). */
-  const saveReviewRanges = (
-    chapterId: string,
-    ranges: Map<string, { start: number; end?: number }[] | undefined>,
-  ) => {
-    updateOpening(latest => ({
-      ...latest,
-      lines: latest.lines.map(l =>
-        l.chapterId === chapterId && ranges.has(l.id)
-          ? { ...l, reviewRanges: ranges.get(l.id) }
-          : l,
-      ),
-    }));
-  };
-
-  const submitChapterRename = (chapterId: string) => {
-    const trimmed = chapterRenameDraft.trim();
-    setRenamingChapterId(undefined);
-    setChapterRenameDraft('');
-    if (!trimmed) return;
-    updateOpening(latest => ({
-      ...latest,
-      chapters: latest.chapters.map(c =>
-        c.id === chapterId ? { ...c, name: trimmed } : c,
-      ),
-    }));
-  };
-
-  const deleteChapter = (chapter: Chapter) => {
-    const latest = openingsRepo.get(opening.id);
-    if (!latest) return;
-    if (latest.chapters.length <= 1) {
-      alert("Impossible de supprimer le dernier chapitre d'une ouverture.");
-      return;
-    }
-    const linesInChapter = latest.lines.filter(l => l.chapterId === chapter.id);
-    const message =
-      `Supprimer le chapitre "${chapter.name}" ?` +
-      (linesInChapter.length > 0
-        ? `\n\n⚠️  ${linesInChapter.length} ligne${
-            linesInChapter.length > 1 ? 's' : ''
-          } et toutes les cartes de révision liées seront supprimées.`
-        : '') +
-      `\n\nCette action est définitive.`;
-    if (!confirm(message)) return;
-    openingsRepo.save({
-      ...latest,
-      chapters: latest.chapters.filter(c => c.id !== chapter.id),
-      lines: latest.lines.filter(l => l.chapterId !== chapter.id),
-      updatedAt: Date.now(),
-    });
-    cardsRepo.dropWhere(
-      c => c.openingId === opening.id && c.chapterId === chapter.id,
-    );
-    // The selected-line useEffect will pick the first remaining line on the
-    // next render if we just deleted the current chapter.
-  };
-
-  const navTotal = line?.moves.length ?? 0;
-  const navPct = navTotal ? (cursorIdx / navTotal) * 100 : 0;
 
   return (
     <main className="mx-auto max-w-325 px-10 pb-17.5 pt-4">
       <div className="mb-4 grid grid-cols-[240px_1fr_350px] items-center gap-8">
         <Link
-          to="/"
+          to="/openings/$openingId"
+          params={{ openingId: opening.id }}
           className="inline-flex items-center gap-2 text-[14.5px] font-semibold text-meta transition hover:text-ink"
         >
           ← Retour
         </Link>
-        <div className="flex items-baseline gap-5">
+        <div className="flex min-w-0 items-center gap-5">
           <h1 className="min-w-0 truncate text-[28px] font-extrabold tracking-[-0.02em]">
-            {opening.name}
+            {draft.name}
           </h1>
-          <p className="shrink-0 whitespace-nowrap text-sm text-meta">
-            {opening.color === 'white' ? 'Blancs' : 'Noirs'} ·{' '}
-            {opening.lines.length} ligne{opening.lines.length > 1 ? 's' : ''}
-          </p>
+          {sortedChapters.length > 0 && (
+            <select
+              value={currentChapter?.id ?? ''}
+              onChange={e => switchToChapter(e.target.value)}
+              title="Changer de chapitre"
+              className="h-9 max-w-60 shrink-0 truncate rounded-[10px] border border-line-strong bg-field px-2.5 text-[13px] font-semibold text-ink focus:border-accent-soft-border focus:outline-none"
+            >
+              {sortedChapters.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-3">
+          {dirty && (
+            <span className="whitespace-nowrap text-[12.5px] font-semibold text-warning-text">
+              Non enregistré
+            </span>
+          )}
+          <button
+            onClick={save}
+            disabled={!dirty}
+            className={
+              dirty
+                ? 'btn-accent flex h-10 items-center rounded-[10px] px-5 text-[13.5px] font-semibold'
+                : 'flex h-10 cursor-default items-center rounded-[10px] border border-line-strong bg-surface px-5 text-[13.5px] font-semibold text-ink-muted'
+            }
+          >
+            {dirty ? 'Enregistrer' : 'Enregistré ✓'}
+          </button>
         </div>
       </div>
-      <AdherencePanel opening={opening} />
       <div className="grid grid-cols-[240px_1fr_350px] items-start gap-8">
-      <aside className="flex flex-col gap-2">
-        <h2 className="mx-1 mb-3.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-ink-muted">
-          Chapitres
-        </h2>
-        <ul className="flex flex-col gap-1.5">
-          {sortedChapters.map(c => (
-            <li key={c.id}>
-              <ChapterItem
-                chapter={c}
-                active={c.id === currentChapterId}
-                canDelete={opening.chapters.length > 1}
-                hasCustomRange={opening.lines.some(
-                  l => l.chapterId === c.id && l.reviewRanges !== undefined,
-                )}
-                renaming={renamingChapterId === c.id}
-                renameDraft={chapterRenameDraft}
-                onSelect={() => switchToChapter(c.id)}
-                onDefineReview={() => setRangeChapterId(c.id)}
-                onRenameStart={() => {
-                  setRenamingChapterId(c.id);
-                  setChapterRenameDraft(c.name);
-                }}
-                onRenameChange={setChapterRenameDraft}
-                onRenameSubmit={() => submitChapterRename(c.id)}
-                onRenameCancel={() => {
-                  setRenamingChapterId(undefined);
-                  setChapterRenameDraft('');
-                }}
-                onDelete={() => deleteChapter(c)}
-              />
-            </li>
-          ))}
-        </ul>
-        <button
-          onClick={() => setChapterModal({ seedMoves: [], defaultName: '' })}
-          className="mt-1 w-full rounded-xl border border-dashed border-line-strong px-3.5 py-3 text-[13.5px] font-semibold text-meta transition hover:border-accent hover:text-accent"
-        >
-          + Nouveau chapitre
-        </button>
+      <aside className="flex flex-col gap-4">
+        <ExplorerPanel fen={currentFen} onPlayMove={playMove} />
       </aside>
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <EngineToggle
-            enabled={engineEnabled}
-            isThinking={isThinking}
-            evalText={evalText}
-            onToggle={toggleEngine}
-          />
-          <div className="flex gap-2.5">
-            <button
-              onClick={removeOpening}
-              className="h-10 rounded-[10px] border border-danger-border bg-danger-soft px-3.75 text-[13.5px] font-semibold text-danger-text transition hover:brightness-[0.98]"
-            >
-              Supprimer
-            </button>
-            <button
-              onClick={() => setExportOpen(true)}
-              className="h-10 rounded-[10px] border border-line-strong bg-surface px-3.75 text-[13.5px] font-semibold text-ink transition hover:bg-surface-high"
-            >
-              Exporter
-            </button>
-            <Link
-              to="/openings/$openingId/study"
-              params={{ openingId: opening.id }}
-              search={{ program: false }}
-              className="btn-accent flex h-10 items-center rounded-[10px] px-3.75 text-[13.5px] font-semibold"
-            >
-              Réviser
-            </Link>
-          </div>
-        </div>
-        {/* ECO + recognized name. Always rendered (`invisible` fallback) so
-            its appearance never shifts the board below. */}
-        <div className="flex items-center gap-2.5">
-            <p
-              className={`min-w-0 flex-1 truncate text-[13.5px] text-meta ${
-                recognizedOpening ? '' : 'invisible'
-              }`}
-              aria-hidden={recognizedOpening ? undefined : true}
-            >
-              <span className="mr-2 rounded-md border border-line-strong bg-track px-2 py-0.75 text-[11px] font-bold tracking-[0.06em] text-ink-soft">
-                {recognizedOpening?.eco ?? 'A00'}
-              </span>
-              <span className="italic">{recognizedOpening?.name ?? ' '}</span>
-            </p>
-            <YoutubeSearchButton opening={recognizedOpening} color={opening.color} />
-          </div>
-
-        <div className="w-132 max-w-full space-y-3">
+      {/* Constrained to the board width and end-aligned: the column's spare
+          space lands between the explorer and the board, the move panels sit
+          close, and the ECO/YouTube bar lines up with the board edges. */}
+      <section className="w-132 max-w-full justify-self-end space-y-4">
+        <EngineToggle
+          enabled={engineEnabled}
+          isThinking={isThinking}
+          evalText={evalText}
+          onToggle={toggleEngine}
+        />
+        <RecognitionBar
+          moves={line?.moves}
+          cursorIdx={cursorIdx}
+          startFen={chapterStartFen}
+          color={draft.color}
+        />
+        <div className="space-y-3">
           <div className="relative">
             {engineEnabled && (
               <EvalBar
@@ -923,67 +612,15 @@ function EditOpeningInner({
                 <NagSquareBadge
                   nag={currentAnnotation.nag}
                   square={line.moves[cursorIdx - 1].slice(2, 4)}
-                  orientation={opening.color}
+                  orientation={draft.color}
                 />
               )}
           </div>
-          <div className="rounded-xl border border-line bg-surface px-3.5 py-2.5 shadow-resting">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setCursorIdx(0)}
-                className="whitespace-nowrap text-[13px] font-semibold text-ink-soft transition hover:text-ink"
-              >
-                Début
-              </button>
-              <button
-                onClick={() => setCursorIdx(c => Math.max(0, c - 1))}
-                aria-label="Coup précédent"
-                className="flex h-8 w-9 items-center justify-center rounded-lg border border-line-strong bg-field text-ink-soft transition hover:bg-track"
-              >
-                ←
-              </button>
-              <div className="relative flex-1">
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
-                  <div
-                    className="h-full rounded-full bg-accent"
-                    style={{ width: `${navPct}%` }}
-                  />
-                </div>
-                <div
-                  className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-accent bg-field shadow-resting"
-                  style={{ left: `${navPct}%` }}
-                />
-                <input
-                  type="range"
-                  min={0}
-                  max={navTotal}
-                  value={cursorIdx}
-                  onChange={e => setCursorIdx(Number(e.target.value))}
-                  disabled={navTotal === 0}
-                  aria-label="Naviguer dans la ligne"
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-default"
-                />
-              </div>
-              <button
-                onClick={() =>
-                  setCursorIdx(c => (line ? Math.min(line.moves.length, c + 1) : c))
-                }
-                aria-label="Coup suivant"
-                className="flex h-8 w-9 items-center justify-center rounded-lg border border-line-strong bg-field text-ink-soft transition hover:bg-track"
-              >
-                →
-              </button>
-              <button
-                onClick={() => setCursorIdx(c => (line ? line.moves.length : c))}
-                className="whitespace-nowrap text-[13px] font-semibold text-ink-soft transition hover:text-ink"
-              >
-                Fin
-              </button>
-              <span className="whitespace-nowrap pl-1 text-[12.5px] text-ink-muted tnum">
-                {cursorIdx} / {navTotal}
-              </span>
-            </div>
-          </div>
+          <BoardNav
+            cursorIdx={cursorIdx}
+            total={line?.moves.length ?? 0}
+            onChange={setCursorIdx}
+          />
         </div>
       </section>
 
@@ -1008,10 +645,7 @@ function EditOpeningInner({
                 nagsAlongLine={nagsAlongLine}
                 startFen={chapterStartFen}
                 onSetCursor={pos => setCursorIdx(pos)}
-                onSwitchLine={(lineId, pos) => {
-                  setSelectedLineId(lineId);
-                  setCursorIdx(pos);
-                }}
+                onSwitchLine={selectLine}
               />
             ) : (
               <p className="pb-3 text-sm italic text-meta">
@@ -1048,678 +682,18 @@ function EditOpeningInner({
           annotation={currentAnnotation}
           onPatch={patch => updateAnnotation(currentFen, patch)}
         />
-
-        <ExplorerPanel fen={currentFen} onPlayMove={playMove} />
       </aside>
 
       {chapterModal && (
         <ChapterNameModal
-          forced={chapterModal.seedMoves.length > 0}
+          forced
           defaultName={chapterModal.defaultName}
           onConfirm={confirmNewChapter}
           onCancel={() => setChapterModal(null)}
         />
       )}
-
-      {exportOpen && (
-        <ExportPgnModal onClose={() => setExportOpen(false)} opening={opening} />
-      )}
-
-      {rangeChapter && (
-        <ReviewRangeModal
-          opening={opening}
-          chapter={rangeChapter}
-          onSave={ranges => {
-            saveReviewRanges(rangeChapter.id, ranges);
-            setRangeChapterId(undefined);
-          }}
-          onClose={() => setRangeChapterId(undefined)}
-        />
-      )}
       </div>
     </main>
-  );
-}
-
-/**
- * How the recent Lichess games fare inside THIS opening, judged by behavior:
- * games are attributed to the opening they followed deepest (a Scotch game
- * stops blaming the Italian once a Scotch repertoire exists), and each miss
- * is read against the user's own baseline at that position — usually played
- * = memory lapse to drill, never played = repertoire/practice disagreement.
- * Silent unless connected and at least one game is attributed here.
- */
-function AdherencePanel({ opening }: { opening: Opening }) {
-  const account = useSyncExternalStore(subscribeAccount, getAccount, getAccount);
-  const allOpenings = useStored(() => openingsRepo.list());
-  const navigate = useNavigate();
-  const [games, setGames] = useState<RecentGame[] | null>(null);
-
-  useEffect(() => {
-    if (!account) {
-      setGames(null);
-      return;
-    }
-    let cancelled = false;
-    fetchRecentGamesCached(account.username, account.token, 200)
-      .then(gs => {
-        if (!cancelled) setGames(gs);
-      })
-      .catch(() => {
-        /* panel is best-effort */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [account]);
-
-  const report = useMemo(
-    () => (games ? buildAdherenceReport(games, allOpenings, opening.id) : null),
-    [games, allOpenings, opening.id],
-  );
-
-  // Leak classification is async (lazy ECO index): lapse vs disagreement vs
-  // deliberate alternative opening — the latter leaves the fidelity math.
-  const [refined, setRefined] = useState<RefinedAdherence | null>(null);
-  useEffect(() => {
-    if (!report) {
-      setRefined(null);
-      return;
-    }
-    let cancelled = false;
-    refineAdherence(report).then(r => {
-      if (!cancelled) setRefined(r);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [report]);
-
-  if (!refined) return null;
-
-  const pct =
-    refined.countedDecisions > 0
-      ? Math.round((refined.followed / refined.countedDecisions) * 100)
-      : 100;
-  const tone =
-    pct >= 80 ? 'text-success' : pct >= 50 ? 'text-warning-text' : 'text-danger';
-  const leaks = refined.leaks.slice(0, 3);
-
-  return (
-    <div className="mb-4 grid grid-cols-[16rem_1fr] items-start gap-8 rounded-[14px] border border-line bg-surface px-5 py-4 shadow-resting">
-      <div className="border-r border-line pr-8">
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-          Fidélité au répertoire · Lichess
-        </div>
-        <div className="mt-1.5 flex items-baseline gap-2">
-          <span className={`text-[34px] font-extrabold leading-none tnum ${tone}`}>
-            {pct}%
-          </span>
-          <span className="text-[12.5px] text-meta tnum">
-            {refined.followed}/{refined.countedDecisions} coups suivis
-          </span>
-        </div>
-        <p className="mt-2 text-[12px] text-meta tnum">
-          {refined.games} partie{refined.games > 1 ? 's' : ''} · sorties : toi ×
-          {refined.userExits} · adv. ×{refined.opponentExits} · tenue ×
-          {refined.held}
-          {refined.alternativeMisses > 0 &&
-            ` · ${refined.alternativeMisses} coups d'autres ouvertures exclus`}
-        </p>
-      </div>
-
-      <div className="min-w-0">
-        <div className="mb-1.5 text-[10.5px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-          Points de fuite
-        </div>
-        {leaks.length === 0 ? (
-          <p className="text-[13px] text-success">
-            Aucun coup manqué sur ces parties — la théorie tient.
-          </p>
-        ) : (
-          <ul className="space-y-1">
-            {leaks.map(leak => (
-              <li key={leak.key} className="flex items-center gap-3">
-                <span className="min-w-0 flex-1 truncate text-[13px] text-ink-soft">
-                  <span className="font-semibold text-ink tnum">
-                    {moveNumberLabel(leak.ply)}
-                  </span>{' '}
-                  {leak.expectedSans.map((san, i) => (
-                    <span key={i} className="font-semibold text-ink">
-                      {i > 0 && ' / '}
-                      <FigurineSan san={san} />
-                    </span>
-                  ))}{' '}
-                  {leak.kind === 'alternative' ? (
-                    <>
-                      — tu joues aussi <em>{leak.openingName}</em> ici (
-                      <FigurineSan san={leak.missSan} /> ×{leak.missTopCount}) :
-                      autre ouverture, hors calcul
-                    </>
-                  ) : leak.kind === 'disagreement' ? (
-                    <>
-                      — tu joues <FigurineSan san={leak.missSan} />{' '}
-                      systématiquement ({leak.missCount}×) : révise, ou adapte
-                      le répertoire
-                    </>
-                  ) : (
-                    <>
-                      — joué <FigurineSan san={leak.missSan} /> {leak.missCount}×
-                      sur {leak.seen} passage{leak.seen > 1 ? 's' : ''}
-                      {leak.followed > 0 && ' (trou de mémoire)'}
-                    </>
-                  )}
-                </span>
-                {leak.kind === 'alternative' ? (
-                  <button
-                    onClick={() => navigate({ to: '/lichess' })}
-                    title="Voir tes ouvertures jouées — et créer son répertoire si tu veux la driller"
-                    className="shrink-0 rounded-full border border-line-strong bg-surface-high px-2.5 py-0.5 text-[11.5px] font-semibold text-ink transition hover:bg-field"
-                  >
-                    Ouvertures jouées
-                  </button>
-                ) : (
-                  <button
-                    onClick={() =>
-                      navigate({
-                        to: '/openings/$openingId/study',
-                        params: { openingId: opening.id },
-                        search: { program: false, pos: leak.key },
-                      })
-                    }
-                    className="shrink-0 rounded-full border border-accent-soft-border bg-accent-soft px-2.5 py-0.5 text-[11.5px] font-semibold text-accent-soft-text transition hover:brightness-[0.97]"
-                  >
-                    Réviser
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ChapterItem({
-  chapter,
-  active,
-  canDelete,
-  hasCustomRange,
-  renaming,
-  renameDraft,
-  onSelect,
-  onDefineReview,
-  onRenameStart,
-  onRenameChange,
-  onRenameSubmit,
-  onRenameCancel,
-  onDelete,
-}: {
-  chapter: Chapter;
-  active: boolean;
-  canDelete: boolean;
-  hasCustomRange: boolean;
-  renaming: boolean;
-  renameDraft: string;
-  onSelect: () => void;
-  onDefineReview: () => void;
-  onRenameStart: () => void;
-  onRenameChange: (v: string) => void;
-  onRenameSubmit: () => void;
-  onRenameCancel: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div
-      className={`group relative rounded-xl border transition ${
-        active ? 'border-line bg-surface shadow-resting' : 'border-transparent hover:bg-track'
-      }`}
-    >
-      {renaming ? (
-        <input
-          autoFocus
-          value={renameDraft}
-          onChange={e => onRenameChange(e.target.value)}
-          onBlur={onRenameSubmit}
-          onKeyDown={e => {
-            if (e.key === 'Enter') onRenameSubmit();
-            if (e.key === 'Escape') onRenameCancel();
-          }}
-          className="w-full rounded-xl bg-transparent px-3.5 py-3 text-sm text-ink focus:outline-none"
-        />
-      ) : (
-        <button
-          onClick={onSelect}
-          title={chapter.name}
-          className={`flex w-full items-center gap-2.5 rounded-xl px-3.5 py-3 text-left text-sm font-medium transition ${
-            active ? 'text-ink' : 'text-ink-soft hover:text-ink'
-          }`}
-        >
-          <span
-            className={`h-4.5 w-0.75 shrink-0 rounded-full ${active ? 'bg-accent' : 'bg-transparent'}`}
-          />
-          <span className="truncate">{chapter.name}</span>
-          {hasCustomRange && (
-            <span
-              className="shrink-0 text-[13px] font-bold leading-none text-accent"
-              title="Révision limitée à une fenêtre de coups"
-            >
-              ◎
-            </span>
-          )}
-        </button>
-      )}
-      {!renaming && (
-        <div className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-line bg-surface-high px-1 py-0.5 opacity-0 shadow-resting transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
-          <button
-            onClick={e => {
-              e.stopPropagation();
-              onDefineReview();
-            }}
-            title="Définir la révision (fenêtre de coups à driller)"
-            className="rounded p-1 text-xs text-ink-soft transition hover:bg-track hover:text-ink"
-          >
-            ◎
-          </button>
-          <button
-            onClick={e => {
-              e.stopPropagation();
-              onRenameStart();
-            }}
-            title="Renommer"
-            className="rounded p-1 text-xs text-ink-soft transition hover:bg-track hover:text-ink"
-          >
-            ✎
-          </button>
-          {canDelete && (
-            <button
-              onClick={e => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              title="Supprimer le chapitre"
-              className="rounded p-1 text-xs text-ink-soft transition hover:bg-danger-soft hover:text-danger"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ChapterNameModal({
-  forced,
-  defaultName,
-  onConfirm,
-  onCancel,
-}: {
-  forced: boolean;
-  defaultName: string;
-  onConfirm: (name: string) => void;
-  onCancel: () => void;
-}) {
-  const [name, setName] = useState(defaultName);
-  // Select the prefilled text on first focus so a single keypress overwrites
-  // the suggestion when the user wants a different name.
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    inputRef.current?.select();
-  }, []);
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    onConfirm(trimmed);
-  };
-  return (
-    <Modal open onClose={onCancel} title="Nouveau chapitre">
-      <form onSubmit={submit} className="space-y-3">
-        <p className="text-xs text-meta">
-          {forced
-            ? 'Tu joues un coup différent sur ta couleur. Donne un nom au chapitre qui va porter cette variante — la révision saura ainsi quelle théorie tu veux driller.'
-            : 'Crée un chapitre vide pour ranger une nouvelle ligne.'}
-        </p>
-        <input
-          ref={inputRef}
-          type="text"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="Ex. Najdorf — Anglaise"
-          autoFocus
-          className="w-full rounded-md border border-line bg-field px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent-soft-border focus:outline-none"
-        />
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg px-4 py-2 text-sm text-ink-soft hover:text-ink"
-          >
-            Annuler
-          </button>
-          <button
-            type="submit"
-            disabled={!name.trim()}
-            className="btn-accent rounded-btn px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Créer le chapitre
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-type SegmentDraft = {
-  /** Ply window [start, end) drafted for the segment; start === end means
-   * nothing drilled in it. */
-  start: number;
-  end: number;
-  /** True between the first and the second boundary click. */
-  picking: boolean;
-};
-
-/**
- * Per-chapter review window editor, organized like the variation tree: the
- * trunk shared by every variant comes first, then one block per branch from
- * its fork on — no move is listed twice. Within a block, first click marks
- * the start of the window, second click the end (order-agnostic); `Aucun`
- * empties the block (e.g. a trunk known by heart). Windows are normalized on
- * save: full coverage → no ranges stored; a window reaching a line's current
- * last move stays open-ended so later additions join the drill.
- */
-function ReviewRangeModal({
-  opening,
-  chapter,
-  onSave,
-  onClose,
-}: {
-  opening: Opening;
-  chapter: Chapter;
-  onSave: (ranges: Map<string, { start: number; end?: number }[] | undefined>) => void;
-  onClose: () => void;
-}) {
-  const startFen = chapter.startFen ?? START_FEN;
-  const lines = useMemo(
-    () => opening.lines.filter(l => l.chapterId === chapter.id && l.moves.length > 0),
-    [opening.lines, chapter.id],
-  );
-  const segments = useMemo(() => segmentLines(lines), [lines]);
-
-  const meta = useMemo(() => {
-    const c = chessFromFen(startFen);
-    return {
-      fullmove: c.fullmoves,
-      startsBlack: turnColor(c) === 'black',
-      userParity: turnColor(c) === opening.color ? 0 : 1,
-    };
-  }, [startFen, opening.color]);
-
-  /** SAN per segment, resolved on a covering line long enough to reach its
-   * tail (the first line of `lineIds` may end early). */
-  const sansBySegment = useMemo(() => {
-    const cache = new Map<string, string[]>();
-    return segments.map(seg => {
-      const rep = lines.find(
-        l => seg.lineIds.includes(l.id) && l.moves.length >= seg.end,
-      );
-      if (!rep) return seg.moves;
-      let sans = cache.get(rep.id);
-      if (!sans) {
-        sans = lineToSan(rep.moves, startFen);
-        cache.set(rep.id, sans);
-      }
-      return sans.slice(seg.start, seg.end);
-    });
-  }, [segments, lines, startFen]);
-
-  const [drafts, setDrafts] = useState<SegmentDraft[]>(() => {
-    const lineById = new Map(lines.map(l => [l.id, l]));
-    const covered = (lineIds: string[], ply: number): boolean => {
-      for (const id of lineIds) {
-        const l = lineById.get(id);
-        if (!l || ply >= l.moves.length) continue;
-        const rs = l.reviewRanges;
-        if (!rs) return true;
-        for (const r of rs) {
-          if (ply >= r.start && (r.end === undefined || ply < r.end)) return true;
-        }
-      }
-      return false;
-    };
-    return segments.map(seg => {
-      let lo = -1;
-      let hi = -1;
-      for (let p = seg.start; p < seg.end; p++) {
-        if (covered(seg.lineIds, p)) {
-          if (lo < 0) lo = p;
-          hi = p;
-        }
-      }
-      // Holes inside one segment (possible after tree edits moved a fork)
-      // collapse to the enclosing window — the user re-narrows if needed.
-      return lo < 0
-        ? { start: seg.start, end: seg.start, picking: false }
-        : { start: lo, end: hi + 1, picking: false };
-    });
-  });
-
-  const clickPly = (segIdx: number, ply: number) => {
-    setDrafts(prev =>
-      prev.map((d, i) => {
-        if (i !== segIdx) return d;
-        if (!d.picking) return { start: ply, end: ply + 1, picking: true };
-        if (ply >= d.start) return { start: d.start, end: ply + 1, picking: false };
-        return { start: ply, end: d.end, picking: false };
-      }),
-    );
-  };
-
-  const setWholeSegment = (segIdx: number) =>
-    setDrafts(prev =>
-      prev.map((d, i) =>
-        i === segIdx
-          ? { start: segments[i].start, end: segments[i].end, picking: false }
-          : d,
-      ),
-    );
-
-  const setEmptySegment = (segIdx: number) =>
-    setDrafts(prev =>
-      prev.map((d, i) =>
-        i === segIdx
-          ? { start: segments[i].start, end: segments[i].start, picking: false }
-          : d,
-      ),
-    );
-
-  /** `3.` / `3…` label for the ply, honouring a custom starting position. */
-  const plyLabel = (ply: number): string => {
-    const slot = ply + (meta.startsBlack ? 1 : 0);
-    const num = meta.fullmove + Math.floor(slot / 2);
-    return slot % 2 === 0 ? `${num}.` : `${num}…`;
-  };
-
-  const isWhitePly = (ply: number): boolean =>
-    (ply + (meta.startsBlack ? 1 : 0)) % 2 === 0;
-
-  const userMovesIn = (d: SegmentDraft): number => {
-    let n = 0;
-    for (let i = d.start; i < d.end; i++) {
-      if (i % 2 === meta.userParity) n++;
-    }
-    return n;
-  };
-
-  const totalDrilled = drafts.reduce((s, d) => s + userMovesIn(d), 0);
-  const topLevelCount = segments.filter(s => s.start === 0).length;
-
-  const segLabel = (segIdx: number): string => {
-    const seg = segments[segIdx];
-    if (seg.start === 0 && topLevelCount === 1) {
-      return segments.length === 1 ? 'Ligne principale' : 'Tronc commun';
-    }
-    return `${plyLabel(seg.start)} ${sansBySegment[segIdx][0] ?? ''}`;
-  };
-
-  const submit = () => {
-    // Each segment window applies to every line passing through it; a line's
-    // stored ranges are the merge of its segments' windows, clamped to its
-    // own length (early-ending lines).
-    const intervalsByLine = new Map<string, { start: number; end: number }[]>(
-      lines.map(l => [l.id, []]),
-    );
-    segments.forEach((seg, i) => {
-      const d = drafts[i];
-      if (!d || d.end <= d.start) return;
-      for (const id of seg.lineIds) {
-        intervalsByLine.get(id)?.push({ start: d.start, end: d.end });
-      }
-    });
-    const ranges = new Map<string, { start: number; end?: number }[] | undefined>();
-    for (const l of lines) {
-      const len = l.moves.length;
-      const clamped = (intervalsByLine.get(l.id) ?? [])
-        .map(v => ({ start: v.start, end: Math.min(v.end, len) }))
-        .filter(v => v.end > v.start)
-        .sort((a, b) => a.start - b.start);
-      const merged: { start: number; end: number }[] = [];
-      for (const v of clamped) {
-        const last = merged[merged.length - 1];
-        if (last && v.start <= last.end) last.end = Math.max(last.end, v.end);
-        else merged.push({ ...v });
-      }
-      if (merged.length === 1 && merged[0].start === 0 && merged[0].end >= len) {
-        ranges.set(l.id, undefined);
-      } else {
-        // The tail interval reaching the line's current end stays open-ended.
-        ranges.set(
-          l.id,
-          merged.map(v => (v.end >= len ? { start: v.start } : v)),
-        );
-      }
-    }
-    onSave(ranges);
-  };
-
-  return (
-    <Modal open wide onClose={onClose} title={`Définir la révision — ${chapter.name}`}>
-      <div className="space-y-4">
-        <p className="text-xs text-meta">
-          Le tronc commun regroupe les coups partagés par toutes les variantes ;
-          chaque branche se règle à partir de sa bifurcation. Clique le premier
-          puis le dernier coup à réviser dans chaque bloc. Hors fenêtre, rien
-          n'est dû ni compté dans la maîtrise — le progrès des cartes est
-          conservé si tu réélargis.
-        </p>
-
-        {segments.length === 0 ? (
-          <p className="text-sm italic text-meta">
-            Ce chapitre ne contient encore aucun coup.
-          </p>
-        ) : (
-          <div className="max-h-96 space-y-3 overflow-y-auto pr-1">
-            {segments.map((seg, segIdx) => {
-              const d = drafts[segIdx];
-              if (!d) return null;
-              const sans = sansBySegment[segIdx];
-              const drilled = userMovesIn(d);
-              const whole = d.start === seg.start && d.end === seg.end;
-              const empty = d.end <= d.start;
-              return (
-                <div
-                  key={`${seg.start}-${seg.moves[0]}-${segIdx}`}
-                  className="rounded-[10px] border border-line bg-surface p-3"
-                  style={{ marginLeft: seg.depth * 16 }}
-                >
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-semibold text-ink-soft">
-                      {seg.depth > 0 && (
-                        <span className="text-ink-muted">↳</span>
-                      )}
-                      <span className="truncate">{segLabel(segIdx)}</span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2.5">
-                      <span className="text-[11.5px] text-meta tnum">
-                        {drilled > 0
-                          ? `${drilled} coup${drilled > 1 ? 's' : ''} à driller`
-                          : 'rien à driller'}
-                      </span>
-                      <button
-                        onClick={() => setWholeSegment(segIdx)}
-                        disabled={whole}
-                        className="text-[11.5px] font-semibold text-ink-muted transition hover:text-ink disabled:opacity-40"
-                      >
-                        Tout
-                      </button>
-                      <button
-                        onClick={() => setEmptySegment(segIdx)}
-                        disabled={empty}
-                        className="text-[11.5px] font-semibold text-ink-muted transition hover:text-ink disabled:opacity-40"
-                      >
-                        Aucun
-                      </button>
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-baseline gap-y-1.5">
-                    {seg.moves.map((uci, j) => {
-                      const ply = seg.start + j;
-                      const inRange = ply >= d.start && ply < d.end;
-                      return (
-                        <Fragment key={ply}>
-                          {(isWhitePly(ply) || j === 0) && (
-                            <span className="select-none pl-1.5 pr-1 text-[11.5px] text-ink-muted tnum">
-                              {plyLabel(ply)}
-                            </span>
-                          )}
-                          <button
-                            onClick={() => clickPly(segIdx, ply)}
-                            className={`rounded-md border px-1.5 py-0.5 text-[13.5px] transition ${
-                              inRange
-                                ? 'border-accent-soft-border bg-accent-soft font-semibold text-accent-soft-text'
-                                : 'border-transparent text-ink-muted hover:bg-track hover:text-ink'
-                            }`}
-                          >
-                            <FigurineSan san={sans[j] ?? uci} />
-                          </button>
-                        </Fragment>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="flex items-center justify-between gap-2 pt-1">
-          <span
-            className={`text-[12.5px] tnum ${
-              totalDrilled > 0 ? 'text-meta' : 'font-semibold text-warning-text'
-            }`}
-          >
-            {totalDrilled} coup{totalDrilled > 1 ? 's' : ''} à driller dans ce
-            chapitre
-          </span>
-          <span className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="rounded-lg px-4 py-2 text-sm text-ink-soft hover:text-ink"
-            >
-              Annuler
-            </button>
-            <button
-              onClick={submit}
-              className="btn-accent rounded-btn px-4 py-2 text-sm font-semibold"
-            >
-              Enregistrer
-            </button>
-          </span>
-        </div>
-      </div>
-    </Modal>
   );
 }
 
@@ -1770,57 +744,6 @@ function EvalBar({
   );
 }
 
-/**
- * YouTube search shortcut shown next to the opening chip. When an opening is
- * recognized, opens a new tab with a curated search query; otherwise renders
- * a greyed-out placeholder of the same width so the chip row stays
- * layout-stable.
- */
-function YoutubeSearchButton({
-  opening,
-  color,
-}: {
-  opening: RecognizedOpening | null;
-  color: Color;
-}) {
-  const baseClass =
-    'inline-flex shrink-0 items-center gap-1.5 rounded-[10px] border border-line-strong bg-surface-high px-3 py-1 text-[13px] font-semibold transition';
-  const icon = (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-3 w-3"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.376.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.546 15.568V8.432L15.818 12z" />
-    </svg>
-  );
-  if (!opening) {
-    return (
-      <span
-        className={`${baseClass} cursor-not-allowed text-ink-muted`}
-        aria-disabled="true"
-        title="Pas d'ouverture reconnue"
-      >
-        {icon} YouTube
-      </span>
-    );
-  }
-  const query = `${opening.name} chess opening ${color}`;
-  const href = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`${baseClass} text-danger hover:bg-field`}
-      title={`Rechercher "${query}" sur YouTube`}
-    >
-      {icon} YouTube
-    </a>
-  );
-}
-
 function EngineToggle({
   enabled,
   isThinking,
@@ -1866,543 +789,6 @@ function EngineToggle({
         </span>
       )}
     </button>
-  );
-}
-
-function ExportPgnModal({
-  onClose,
-  opening,
-}: {
-  onClose: () => void;
-  opening: Opening;
-}) {
-  const pgn = useMemo(() => exportToPgn(opening), [opening]);
-  const [copied, setCopied] = useState(false);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(pgn);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* ignored */
-    }
-  };
-
-  return (
-    <Modal open onClose={onClose} title="Exporter en PGN">
-      <div className="space-y-3">
-        <p className="text-xs text-meta">
-          Compatible Lichess Study, ChessBase, Chessable. Un chapitre = une
-          partie PGN. Inclut variantes, commentaires, NAGs et flèches.
-        </p>
-        <textarea
-          readOnly
-          value={pgn}
-          rows={10}
-          className="w-full resize-none rounded-md border border-line bg-field p-2 font-mono text-xs text-ink focus:outline-none"
-          onFocus={e => e.currentTarget.select()}
-        />
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm text-ink-soft hover:text-ink"
-          >
-            Fermer
-          </button>
-          <button
-            onClick={copy}
-            className="btn-accent rounded-btn px-4 py-2 text-sm font-semibold"
-          >
-            {copied ? 'Copié ✓' : 'Copier'}
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-type TrieRoot = ReturnType<typeof buildPrefixTrie>;
-
-type SelectedLineProps = {
-  line: Line;
-  sans: string[];
-  fenAtPosition: Map<number, string>;
-  trie: TrieRoot;
-  cursorIdx: number;
-  nagsAlongLine: Map<number, Nag>;
-  /** Starting FEN for the chapter the selected line belongs to. Drives the
-   * move numbers and the white/black column assignment when a chapter
-   * starts past the initial position. */
-  startFen: string;
-  onSetCursor: (pos: number) => void;
-  onSwitchLine: (lineId: string, pos: number) => void;
-};
-
-/**
- * Renders the selected line as a scoresheet-style table: one row per move
- * pair (number · white cell · black cell). Each cell holds the played move
- * and any sibling continuations seen at that ply as italic paren-chips.
- * Clicking a chip switches the selected line to one that takes that
- * continuation, landing the cursor on the alternative move.
- */
-function SelectedLineView({
-  line,
-  sans,
-  fenAtPosition,
-  trie,
-  cursorIdx,
-  nagsAlongLine,
-  startFen,
-  onSetCursor,
-  onSwitchLine,
-}: SelectedLineProps) {
-  // Read the starting fullmove number and side-to-move from the chapter's
-  // starting FEN. A chapter that begins after `3.d4` (black to move at
-  // fullmove 3) needs to label its first move "3..." and reserve an empty
-  // white cell on the first row.
-  const startMeta = useMemo(() => {
-    const c = chessFromFen(startFen);
-    return {
-      fullmove: c.fullmoves,
-      startsBlack: turnColor(c) === 'black',
-    };
-  }, [startFen]);
-
-  if (line.moves.length === 0) {
-    return (
-      <div className="py-3 text-sm">
-        <button
-          onClick={() => onSetCursor(0)}
-          className={`rounded-md px-2 py-1 text-xs italic transition ${
-            cursorIdx === 0
-              ? 'border border-line-strong bg-surface-high text-ink shadow-resting'
-              : 'text-meta hover:bg-track'
-          }`}
-        >
-          (position initiale — jouez un coup)
-        </button>
-      </div>
-    );
-  }
-
-  const offset = startMeta.startsBlack ? 1 : 0;
-  const tailPos = line.moves.length;
-  const trailing = continuationsAt(trie, line, tailPos);
-  const totalRows = Math.ceil((line.moves.length + offset) / 2);
-  // The next move would be white when the count of slots so far (offset +
-  // plies) is even — that's when we need a fresh row to host a trailing
-  // white chip from an alternative continuation.
-  const nextSideIsWhite = (line.moves.length + offset) % 2 === 0;
-  const needsTrailingRow = trailing.length > 0 && nextSideIsWhite;
-  const rowsToRender = totalRows + (needsTrailingRow ? 1 : 0);
-
-  const rows: React.ReactNode[] = [];
-  for (let rowIdx = 0; rowIdx < rowsToRender; rowIdx++) {
-    const fullmove = startMeta.fullmove + rowIdx;
-    // `whitePly` is `-1` for the first row when the chapter starts on
-    // black's move — we render an empty placeholder cell so the column
-    // grid stays aligned with the number column.
-    const whitePly = rowIdx * 2 - offset;
-    const blackPly = whitePly + 1;
-    const isEven = rowIdx % 2 === 0;
-
-    rows.push(
-      <Fragment key={rowIdx}>
-        <div
-          className={`select-none px-3 py-1.5 text-right text-ink-muted tnum ${
-            isEven ? 'bg-field' : ''
-          }`}
-        >
-          {fullmove}.
-        </div>
-        {whitePly >= 0 ? (
-          <MoveCell
-            line={line}
-            sans={sans}
-            pos={whitePly}
-            tailPos={tailPos}
-            trie={trie}
-            trailing={trailing}
-            fenAtPosition={fenAtPosition}
-            cursorIdx={cursorIdx}
-            nag={nagsAlongLine.get(whitePly)}
-            onSetCursor={onSetCursor}
-            onSwitchLine={onSwitchLine}
-            shaded={isEven}
-          />
-        ) : (
-          <div
-            className={`border-l border-line px-3 py-1.5 ${
-              isEven ? 'bg-field' : ''
-            }`}
-          />
-        )}
-        <MoveCell
-          line={line}
-          sans={sans}
-          pos={blackPly}
-          tailPos={tailPos}
-          trie={trie}
-          trailing={trailing}
-          fenAtPosition={fenAtPosition}
-          cursorIdx={cursorIdx}
-          nag={nagsAlongLine.get(blackPly)}
-          onSetCursor={onSetCursor}
-          onSwitchLine={onSwitchLine}
-          shaded={isEven}
-        />
-      </Fragment>,
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-[34px_1fr_1fr] overflow-hidden pb-2 text-sm">
-      {rows}
-    </div>
-  );
-}
-
-type MoveCellProps = {
-  line: Line;
-  sans: string[];
-  pos: number;
-  tailPos: number;
-  trie: TrieRoot;
-  trailing: { uci: string; lineIds: string[] }[];
-  fenAtPosition: Map<number, string>;
-  cursorIdx: number;
-  nag: Nag | undefined;
-  onSetCursor: (pos: number) => void;
-  onSwitchLine: (lineId: string, pos: number) => void;
-  shaded: boolean;
-};
-
-function MoveCell({
-  line,
-  sans,
-  pos,
-  tailPos,
-  trie,
-  trailing,
-  fenAtPosition,
-  cursorIdx,
-  nag,
-  onSetCursor,
-  onSwitchLine,
-  shaded,
-}: MoveCellProps) {
-  const hasMove = pos < line.moves.length;
-  const isTail = pos === tailPos;
-  const fen = fenAtPosition.get(pos);
-  const alts =
-    hasMove && fen
-      ? continuationsAt(trie, line, pos).filter(c => c.uci !== line.moves[pos])
-      : isTail
-        ? trailing
-        : [];
-
-  return (
-    <div
-      className={`border-l border-line px-3 py-1.5 ${shaded ? 'bg-field' : ''}`}
-    >
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        {hasMove && (
-          <span className="inline-flex items-baseline gap-0.5">
-            <SelectedMove
-              san={sans[pos] ?? line.moves[pos]}
-              isCursor={cursorIdx === pos + 1}
-              onClick={() => onSetCursor(pos + 1)}
-            />
-            {nag !== undefined && (
-              <span
-                className={`text-xs font-bold leading-none ${NAG_COLORS[nag]}`}
-                title={NAG_LABELS[nag]}
-              >
-                {NAG_SYMBOLS[nag]}
-              </span>
-            )}
-          </span>
-        )}
-        {fen &&
-          alts.map(alt => (
-            <AltChip
-              key={alt.uci}
-              san={uciToSanAt(fen, alt.uci)}
-              onClick={() => onSwitchLine(alt.lineIds[0], pos + 1)}
-            />
-          ))}
-      </div>
-    </div>
-  );
-}
-
-function SelectedMove({
-  san,
-  isCursor,
-  onClick,
-}: {
-  san: string;
-  isCursor: boolean;
-  onClick: () => void;
-}) {
-  // The white/black distinction is now carried by the column the cell sits
-  // in, so the move itself can stay uniform — only the cursor needs to pop.
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-md px-1.5 py-0.5 font-semibold transition ${
-        isCursor
-          ? 'border border-line-strong bg-surface-high text-ink shadow-resting'
-          : 'text-ink hover:bg-track'
-      }`}
-    >
-      <FigurineSan san={san} />
-    </button>
-  );
-}
-
-const EXPLORER_SOURCES: { id: ExplorerSource; label: string }[] = [
-  { id: 'lichess', label: 'Lichess' },
-  { id: 'masters', label: 'Masters' },
-];
-
-const GAMES_FMT = new Intl.NumberFormat('fr-FR', {
-  notation: 'compact',
-  maximumFractionDigits: 1,
-});
-
-/**
- * Lichess opening explorer panel: for the position under the cursor, the
- * most played moves with their game share and the win/draw/loss split.
- * Opt-in (talks to the public Lichess API) and persisted, like the engine
- * toggle. Clicking a move plays it through `playMove`, so the usual
- * variant/chapter rules apply.
- */
-function ExplorerPanel({
-  fen,
-  onPlayMove,
-}: {
-  fen: string;
-  onPlayMove: (uci: string) => void;
-}) {
-  const [enabled, setEnabled] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('gambit.explorer.enabled') === '1';
-    } catch {
-      return false;
-    }
-  });
-  const [source, setSource] = useState<ExplorerSource>(() => {
-    try {
-      return localStorage.getItem('gambit.explorer.source') === 'masters'
-        ? 'masters'
-        : 'lichess';
-    } catch {
-      return 'lichess';
-    }
-  });
-  const [result, setResult] = useState<ExplorerResult | null>(null);
-  const [status, setStatus] = useState<
-    'loading' | 'ready' | 'limited' | 'unauthorized' | 'error'
-  >('ready');
-  // The Lichess session feeds the Authorization header — refetch when it
-  // appears (login completes async after the OAuth redirect).
-  const account = useSyncExternalStore(subscribeAccount, getAccount, getAccount);
-
-  const toggle = () => {
-    setEnabled(prev => {
-      const next = !prev;
-      try {
-        localStorage.setItem('gambit.explorer.enabled', next ? '1' : '0');
-      } catch {
-        /* ignored */
-      }
-      return next;
-    });
-  };
-
-  const pickSource = (s: ExplorerSource) => {
-    setSource(s);
-    try {
-      localStorage.setItem('gambit.explorer.source', s);
-    } catch {
-      /* ignored */
-    }
-  };
-
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    setStatus('loading');
-    // Debounced: scrubbing through a line must not fire one request per ply.
-    // The previous result stays visible (dimmed) while the new one loads.
-    const t = setTimeout(() => {
-      fetchExplorer(fen, source)
-        .then(r => {
-          if (cancelled) return;
-          setResult(r);
-          setStatus('ready');
-        })
-        .catch(e => {
-          if (cancelled) return;
-          setStatus(
-            e instanceof ExplorerUnauthorized
-              ? 'unauthorized'
-              : e instanceof ExplorerRateLimited
-                ? 'limited'
-                : 'error',
-          );
-        });
-    }, 250);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [enabled, fen, source, account]);
-
-  return (
-    <div className="rounded-[14px] border border-line bg-surface p-4 shadow-resting">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-          Explorateur
-        </span>
-        <span className="flex items-center gap-1.5">
-          {enabled &&
-            EXPLORER_SOURCES.map(s => (
-              <button
-                key={s.id}
-                onClick={() => pickSource(s.id)}
-                className={`rounded-full border px-2.5 py-0.5 text-[11.5px] font-semibold transition ${
-                  source === s.id
-                    ? 'border-accent-soft-border bg-accent-soft text-accent-soft-text'
-                    : 'border-line-strong text-ink-muted hover:bg-track hover:text-ink'
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
-          <button
-            onClick={toggle}
-            title={
-              enabled
-                ? 'Désactiver l’explorateur'
-                : 'Activer (interroge l’API publique de Lichess)'
-            }
-            className={`rounded-full border px-2.5 py-0.5 text-[11.5px] font-semibold transition ${
-              enabled
-                ? 'border-info-border bg-info-soft text-info'
-                : 'border-line-strong text-ink-muted hover:bg-track hover:text-ink'
-            }`}
-          >
-            {enabled ? 'ON' : 'OFF'}
-          </button>
-        </span>
-      </div>
-
-      {!enabled ? (
-        <p className="text-[12.5px] text-meta">
-          Coups les plus joués et résultats associés (parties Lichess 1800+ ou
-          parties de maîtres), pour la position affichée.
-        </p>
-      ) : status === 'unauthorized' ? (
-        <div className="space-y-2.5">
-          <p className="text-[12.5px] text-meta">
-            {account
-              ? 'Session Lichess expirée ou révoquée — reconnecte ton compte.'
-              : "L'explorateur passe par ton compte Lichess (gratuit, aucun scope demandé)."}
-          </p>
-          <button
-            onClick={() => void login()}
-            className="btn-accent w-full rounded-md px-3 py-2 text-xs font-semibold"
-          >
-            Connecter mon compte Lichess
-          </button>
-        </div>
-      ) : status === 'error' ? (
-        <p className="text-[12.5px] text-meta">Explorateur indisponible.</p>
-      ) : status === 'limited' ? (
-        <p className="text-[12.5px] text-warning-text">
-          Limite de l'API atteinte — l'explorateur se met en pause une minute.
-        </p>
-      ) : !result ? (
-        <p className="animate-pulse text-[12.5px] text-meta">Chargement…</p>
-      ) : result.moves.length === 0 ? (
-        <p className="text-[12.5px] text-meta">
-          Aucune partie dans cette base pour cette position.
-        </p>
-      ) : (
-        <div
-          className={`transition-opacity ${status === 'loading' ? 'opacity-45' : ''}`}
-        >
-          <p className="mb-2 text-[11.5px] text-meta tnum">
-            {GAMES_FMT.format(result.total)} parties
-          </p>
-          <div className="space-y-1">
-            {result.moves.map(m => (
-              <ExplorerRow
-                key={m.uci}
-                move={m}
-                positionTotal={result.total}
-                onPlay={() => onPlayMove(m.uci)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ExplorerRow({
-  move,
-  positionTotal,
-  onPlay,
-}: {
-  move: ExplorerMoveStats;
-  positionTotal: number;
-  onPlay: () => void;
-}) {
-  const share =
-    positionTotal > 0 ? Math.round((move.total / positionTotal) * 100) : 0;
-  const wp = move.total > 0 ? (move.white / move.total) * 100 : 0;
-  const dp = move.total > 0 ? (move.draws / move.total) * 100 : 0;
-  const bp = move.total > 0 ? 100 - wp - dp : 0;
-  return (
-    <div
-      className="flex items-center gap-2"
-      title={`${move.total.toLocaleString('fr-FR')} parties · Blancs ${Math.round(wp)}% · Nulles ${Math.round(dp)}% · Noirs ${Math.round(bp)}%`}
-    >
-      <button
-        onClick={onPlay}
-        className="w-14 shrink-0 rounded-md px-1.5 py-0.5 text-left text-[13.5px] font-semibold text-ink transition hover:bg-track"
-      >
-        <FigurineSan san={move.san} />
-      </button>
-      <span className="w-9 shrink-0 text-right text-[11.5px] text-ink-muted tnum">
-        {share}%
-      </span>
-      <div className="flex h-4 flex-1 overflow-hidden rounded border border-line text-[9px] font-bold leading-none tnum">
-        <div
-          className="flex items-center justify-center bg-surface-high text-ink-soft"
-          style={{ width: `${wp}%` }}
-        >
-          {wp >= 18 ? `${Math.round(wp)}` : ''}
-        </div>
-        <div
-          className="flex items-center justify-center bg-line-strong text-ink-soft"
-          style={{ width: `${dp}%` }}
-        >
-          {dp >= 18 ? `${Math.round(dp)}` : ''}
-        </div>
-        <div
-          className="flex items-center justify-center bg-ink text-paper"
-          style={{ width: `${bp}%` }}
-        >
-          {bp >= 18 ? `${Math.round(bp)}` : ''}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -2484,23 +870,5 @@ function AnnotationPanel({
         )}
       </div>
     </div>
-  );
-}
-
-function AltChip({
-  san,
-  onClick,
-}: {
-  san: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={`Basculer sur la variante ${san}`}
-      className="cursor-pointer italic text-ink-muted transition hover:text-ink"
-    >
-      (<FigurineSan san={san} />)
-    </button>
   );
 }

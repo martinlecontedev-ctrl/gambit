@@ -132,6 +132,70 @@ describe('analyzeGame', () => {
       kind: 'no-repertoire',
     });
   });
+
+  it('normalizes a castling novelty to the king-target UCI', () => {
+    // Book expects 9...exd4; black castles instead. chessops spells O-O as
+    // e8h8 — the verdict must carry e8g8 so the grafted line stores the
+    // same spelling the board editor would produce.
+    const deep: Opening = {
+      ...opening,
+      lines: [
+        {
+          id: 'l1',
+          name: 'main',
+          chapterId: 'ch1',
+          moves: ['e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1c4', 'f8c5', 'c2c3', 'g8f6', 'd2d4', 'e5d4'],
+        },
+      ],
+    };
+    const b = buildRepertoireBook([deep], 'white');
+    const v = analyzeGame(
+      ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'c3', 'Nf6', 'd4', 'O-O'],
+      'white',
+      b,
+    );
+    expect(v).toMatchObject({ kind: 'opponent-left', playedUci: 'e8g8' });
+  });
+
+  it('walks through a move-order transposition instead of flagging it', () => {
+    // Sibling lines cover ...Nf6 and ...d6 in both orders partially: the
+    // main line plays Nf6 first, the sibling d6 first. A game mixing the
+    // orders (Nf6 then d6) reaches the sibling's position — that is not a
+    // novelty, and flagging it used to re-propose grafting forever.
+    const transpo: Opening = {
+      ...opening,
+      lines: [
+        {
+          id: 'l1',
+          name: 'main',
+          chapterId: 'ch1',
+          moves: ['e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1c4', 'f8c5', 'c2c3', 'g8f6', 'd2d4', 'e5d4'],
+        },
+        {
+          id: 'l2',
+          name: 'sibling',
+          chapterId: 'ch1',
+          moves: ['e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1c4', 'f8c5', 'c2c3', 'd7d6', 'd2d4', 'g8f6', 'h2h3'],
+        },
+      ],
+    };
+    const b = buildRepertoireBook([transpo], 'white');
+    // 8...d6 is not a book edge after 7...Nf6 8.d4, but the position it
+    // reaches is the sibling's (d6/Nf6 swapped) — keep walking to book-end.
+    const v = analyzeGame(
+      ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'c3', 'Nf6', 'd4', 'd6'],
+      'white',
+      b,
+    );
+    expect(v).toEqual({ kind: 'book-end', ply: 10 });
+    // The walk continues in the sibling's continuations after the rejoin.
+    const v2 = analyzeGame(
+      ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'c3', 'Nf6', 'd4', 'd6', 'h3', 'a6'],
+      'white',
+      b,
+    );
+    expect(v2).toEqual({ kind: 'book-end', ply: 11 });
+  });
 });
 
 describe('buildPositionOwners', () => {
@@ -142,12 +206,58 @@ describe('buildPositionOwners', () => {
     ).toBe('op1');
     expect(buildPositionOwners([opening], 'black').size).toBe(0);
   });
+
+  it('owns line-end positions, which stay out of the walk book', () => {
+    // A seeded repertoire whose line STOPS on the family position must
+    // still count as covering it (the "create a repertoire" button test) —
+    // while analyzeGame keeps treating that leaf as a book end.
+    const afterNf3 =
+      'rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -';
+    expect(buildPositionOwners([opening], 'white').get(afterNf3)).toBe('op1');
+    expect(buildRepertoireBook([opening], 'white').has(afterNf3)).toBe(false);
+  });
 });
 
 describe('findLineForPath', () => {
   it('finds the line playing the exact prefix', () => {
     const hit = findLineForPath([opening], 'white', ['e2e4', 'c7c5']);
     expect(hit).toEqual({ openingId: 'op1', lineId: 'l2' });
+  });
+
+  it('prefers the line that continues past the path over a dead-end prefix', () => {
+    // A seeded "Créer un répertoire" opening whose line IS the game route
+    // must not steal the graft anchor from the real repertoire line that
+    // had a prepared continuation at the deviation position.
+    const seeded: Opening = {
+      ...opening,
+      id: 'seeded',
+      lines: [
+        { id: 'seed1', name: 'Ligne 1', chapterId: 'ch1', moves: ['e2e4', 'c7c5'] },
+      ],
+    };
+    const hit = findLineForPath([seeded, opening], 'white', ['e2e4', 'c7c5']);
+    expect(hit).toEqual({ openingId: 'op1', lineId: 'l2' });
+  });
+
+  it('matches despite a legacy king-on-rook castle spelling in the stored line', () => {
+    const legacy: Opening = {
+      ...opening,
+      lines: [
+        {
+          id: 'l1',
+          name: 'main',
+          chapterId: 'ch1',
+          moves: ['e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1c4', 'f8c5', 'e1h1', 'd7d6'],
+        },
+      ],
+    };
+    // The verdict path spells castles in the normalized form (e1g1).
+    const hit = findLineForPath(
+      [legacy],
+      'white',
+      ['e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1c4', 'f8c5', 'e1g1'],
+    );
+    expect(hit).toEqual({ openingId: 'op1', lineId: 'l1' });
   });
 
   it('misses when the path is spelled differently or absent', () => {

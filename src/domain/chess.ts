@@ -53,10 +53,10 @@ export function uciFromMove(chess: Chess, orig: Key, dest: Key): string {
 /**
  * Rewrite a king move that lands on its own rook (Chess960-style castling)
  * into the standard king-target form (king moves two squares: e1c1/e1g1,
- * e8c8/e8g8). All other UCIs are passed through unchanged. Internal helper
- * for `uciFromMove` and `sameMove` — no consumer outside the module.
+ * e8c8/e8g8). All other UCIs are passed through unchanged. Everything the
+ * app persists should go through this so stored moves compare with `===`.
  */
-function normalizeCastleUci(chess: Chess, uci: string): string {
+export function normalizeCastleUci(chess: Chess, uci: string): string {
   if (uci.length < 4) return uci;
   const fromKey = uci.slice(0, 2);
   const toKey = uci.slice(2, 4);

@@ -5,6 +5,7 @@ import type { Key } from '@lichess-org/chessground/types';
 import { Chessboard } from '../components/Chessboard';
 import { FigurineSan } from '../components/FigurineSan';
 import { NagSquareBadge } from '../components/NagSquareBadge';
+import { OpeningNotFound } from '../components/opening/OpeningNotFound';
 import {
   applyUci,
   chessFromFen,
@@ -17,9 +18,9 @@ import {
   uciFromMove,
   uciToSanAt,
 } from '../domain/chess';
-import { buildCards, openingStats } from '../domain/cards';
+import { buildCards, coverCardInReviewRanges, openingStats } from '../domain/cards';
 import { NAG_COLORS, NAG_LABELS, NAG_SYMBOLS } from '../domain/nag';
-import { review, type Grade } from '../domain/srs';
+import { newCardStats, review, type Grade } from '../domain/srs';
 import type { Card, Chapter, Opening } from '../domain/types';
 import { cardsRepo, openingsRepo, reviewsRepo } from '../storage/repository';
 import { useStored } from '../storage/store';
@@ -135,9 +136,13 @@ function StudyImpl({
       ...opening,
       lines: opening.lines.map(l => ({ ...l, reviewRanges: undefined })),
     };
-    return buildCards(unwindowed, storedCards, now).filter(
+    const cards = buildCards(unwindowed, storedCards, now).filter(
       c => positionKey(c.fen) === exercisePos,
     );
+    // A stale deep link (repertoire edited since the report) can point at a
+    // position with no cards — fall back to a regular session instead of a
+    // misleading "tout est à jour" exercise screen.
+    return cards.length > 0 ? cards : undefined;
   });
 
   // Review is scoped to one chapter at a time. Group the due cards by chapter
@@ -193,7 +198,7 @@ function StudyImpl({
     () => (initialExercise?.length ?? 0) > 0,
   );
 
-  if (!opening) return <NotFound />;
+  if (!opening) return <OpeningNotFound />;
   if (!hadDueAtMount) return <NothingDue openingId={opening.id} />;
 
   const activeChapterId =
@@ -217,23 +222,13 @@ function StudyImpl({
           ? initialExercise
           : dueByChapter.get(activeChapterId) ?? []
       }
+      isExercise={exerciseActive && (initialExercise?.length ?? 0) > 0}
       openingDue={totalDue}
       openingsFile={openingsFile}
       nextOpening={nextOpening}
       stats={stats}
       onGraded={onGraded}
     />
-  );
-}
-
-function NotFound() {
-  return (
-    <main className="mx-auto max-w-md px-10 py-16 text-center text-ink-soft">
-      Ouverture introuvable.{' '}
-      <Link to="/" className="font-semibold text-accent underline">
-        Retour
-      </Link>
-    </main>
   );
 }
 
@@ -244,11 +239,11 @@ function NothingDue({ openingId }: { openingId: string }) {
       <p className="mt-2 text-sm text-meta">Rien à réviser pour le moment.</p>
       <div className="mt-8 flex justify-center gap-2.5">
         <Link
-          to="/openings/$openingId/edit"
+          to="/openings/$openingId"
           params={{ openingId }}
           className="flex h-11 items-center rounded-btn border border-line-strong bg-surface-high px-4.5 text-sm font-semibold text-ink transition hover:bg-field"
         >
-          Éditer
+          Ouvrir
         </Link>
         <Link
           to="/"
@@ -270,6 +265,7 @@ function ReviewSession({
   activeChapterId,
   onSelectChapter,
   initialQueue,
+  isExercise,
   openingDue,
   openingsFile,
   nextOpening,
@@ -282,6 +278,7 @@ function ReviewSession({
   activeChapterId: string;
   onSelectChapter: (id: string) => void;
   initialQueue: Card[];
+  isExercise: boolean;
   openingDue: number;
   openingsFile: OpeningFileItem[] | undefined;
   nextOpening: OpeningFileItem | undefined;
@@ -530,6 +527,8 @@ function ReviewSession({
                 )}
               </div>
             </div>
+          ) : isExercise ? (
+            <ExerciseDone opening={opening} cards={queue} />
           ) : (
             <div className="flex w-full max-w-140 flex-col items-center rounded-[14px] border border-line bg-surface px-6 py-14 text-center shadow-card">
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-success-soft text-2xl text-success">
@@ -774,5 +773,74 @@ function GradeButton({
     >
       {label}
     </button>
+  );
+}
+
+/**
+ * End screen of a `?pos=` exercise session. The drilled move usually got
+ * missed in a real game because it fell out of the regular rotation
+ * (windowed out, or scheduled far away after past successes) — offer to
+ * fold it back in: cards rescheduled as new (due now, Anki-style relearn)
+ * and the chapter's review windows widened to include the ply.
+ */
+function ExerciseDone({ opening, cards }: { opening: Opening; cards: Card[] }) {
+  const [reintegrated, setReintegrated] = useState(false);
+
+  const reintegrate = () => {
+    // Widen windows against the freshest opening from storage (race-safe).
+    const latest = openingsRepo.get(opening.id);
+    if (latest) {
+      let next = latest;
+      for (const c of cards) next = coverCardInReviewRanges(next, c);
+      if (next !== latest) {
+        openingsRepo.save({ ...next, updatedAt: Date.now() });
+      }
+    }
+    const now = Date.now();
+    const stored = cardsRepo.list();
+    for (const c of cards) {
+      const cur = stored.find(s => s.id === c.id) ?? c;
+      // Rescheduled as new; the lapse history stays.
+      cardsRepo.upsert({ ...cur, ...newCardStats(now), lapses: cur.lapses });
+    }
+    setReintegrated(true);
+  };
+
+  return (
+    <div className="flex w-full max-w-140 flex-col items-center rounded-[14px] border border-line bg-surface px-6 py-14 text-center shadow-card">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-success-soft text-2xl text-success">
+        ✓
+      </span>
+      <p className="mt-4 text-lg font-bold">Exercice terminé</p>
+      {reintegrated ? (
+        <p className="mt-1 max-w-sm text-sm text-meta">
+          Réintégré : la position est due dès maintenant et reprendra la
+          progression habituelle des révisions.
+        </p>
+      ) : (
+        <p className="mt-1 max-w-sm text-sm text-meta">
+          Réintégrer ce coup dans la révision fréquente ? La carte repart
+          comme nouvelle (due dès maintenant) et la fenêtre de révision du
+          chapitre s'élargit pour l'inclure.
+        </p>
+      )}
+      <div className="mt-6 flex justify-center gap-2.5">
+        {!reintegrated && (
+          <button
+            onClick={reintegrate}
+            className="btn-accent flex h-11 items-center rounded-btn px-5 text-sm font-semibold"
+          >
+            Oui, réintégrer
+          </button>
+        )}
+        <Link
+          to="/openings/$openingId"
+          params={{ openingId: opening.id }}
+          className="flex h-11 items-center rounded-btn border border-line-strong bg-surface-high px-5 text-sm font-semibold text-ink transition hover:bg-field"
+        >
+          {reintegrated ? "Retour à l'ouverture" : 'Non merci'}
+        </Link>
+      </div>
+    </div>
   );
 }

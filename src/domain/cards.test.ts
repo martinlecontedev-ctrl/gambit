@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { buildCards, openingStats, MASTERY_INTERVAL_DAYS } from './cards';
+import {
+  buildCards,
+  coverCardInReviewRanges,
+  openingStats,
+  MASTERY_INTERVAL_DAYS,
+} from './cards';
 import { applyUci, chessFromFen, fenOf, START_FEN } from './chess';
 import { newCardStats } from './srs';
 import type { Card, Opening } from './types';
@@ -188,5 +193,54 @@ describe('openingStats', () => {
     });
     // Only the still-fresh e2e4 card remains due.
     expect(openingStats(opening, [future], now).due).toBe(1);
+  });
+});
+
+describe('coverCardInReviewRanges', () => {
+  const windowed: Opening = {
+    ...opening,
+    lines: [
+      {
+        id: 'l1',
+        name: 'main',
+        chapterId: CH,
+        moves: ['e2e4', 'e7e5', 'g1f3'],
+        // Only the first move is drilled: 2.Nf3 (ply 2) is windowed out.
+        reviewRanges: [{ start: 0, end: 1 }],
+      },
+    ],
+  };
+  const nf3Card = storedCard(fenAfter(['e2e4', 'e7e5']), 'g1f3', {});
+
+  it('folds the card ply back into the line windows', () => {
+    // Sanity: the card is not emitted while windowed out.
+    expect(buildCards(windowed, []).map(c => c.expectedUci)).toEqual(['e2e4']);
+    const covered = coverCardInReviewRanges(windowed, nf3Card);
+    expect(covered.lines[0].reviewRanges).toEqual([
+      { start: 0, end: 1 },
+      { start: 2, end: 3 },
+    ]);
+    expect(buildCards(covered, []).map(c => c.expectedUci).sort()).toEqual([
+      'e2e4',
+      'g1f3',
+    ]);
+  });
+
+  it('merges adjacent intervals and leaves covered lines untouched', () => {
+    const adjacent: Opening = {
+      ...windowed,
+      lines: [{ ...windowed.lines[0], reviewRanges: [{ start: 0, end: 2 }] }],
+    };
+    const merged = coverCardInReviewRanges(adjacent, nf3Card);
+    expect(merged.lines[0].reviewRanges).toEqual([{ start: 0, end: 3 }]);
+    // Fully covered line (no stored ranges): the same object comes back.
+    expect(coverCardInReviewRanges(opening, nf3Card)).toBe(opening);
+    // Ply already inside a window: no rewrite either.
+    expect(coverCardInReviewRanges(merged, nf3Card)).toBe(merged);
+  });
+
+  it('ignores lines of other chapters and unrelated positions', () => {
+    const other = storedCard(START_FEN, 'e2e4', { chapterId: 'other' });
+    expect(coverCardInReviewRanges(windowed, other)).toBe(windowed);
   });
 });
