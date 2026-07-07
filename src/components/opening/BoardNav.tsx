@@ -1,3 +1,5 @@
+import { useComponentStrings } from '../../i18n/components';
+
 /**
  * Cursor navigation bar shown under the board: start/prev buttons, a
  * scrubbable progress slider, next/end buttons and a ply counter.
@@ -11,6 +13,7 @@ export function BoardNav({
   total: number;
   onChange: (idx: number) => void;
 }) {
+  const tr = useComponentStrings().boardNav;
   const pct = total ? (cursorIdx / total) * 100 : 0;
   return (
     <div className="rounded-xl px-3.5 py-2.5">
@@ -19,11 +22,11 @@ export function BoardNav({
           onClick={() => onChange(0)}
           className="whitespace-nowrap text-[13px] font-semibold text-on-muted transition hover:text-on-ink"
         >
-          Début
+          {tr.start}
         </button>
         <button
           onClick={() => onChange(Math.max(0, cursorIdx - 1))}
-          aria-label="Coup précédent"
+          aria-label={tr.prevMove}
           className="flex h-8 w-9 items-center justify-center rounded-lg border border-chip-border bg-chip text-chip-text transition hover:border-chip-hover"
         >
           ←
@@ -46,13 +49,13 @@ export function BoardNav({
             value={cursorIdx}
             onChange={e => onChange(Number(e.target.value))}
             disabled={total === 0}
-            aria-label="Naviguer dans la ligne"
+            aria-label={tr.scrub}
             className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-default"
           />
         </div>
         <button
           onClick={() => onChange(Math.min(total, cursorIdx + 1))}
-          aria-label="Coup suivant"
+          aria-label={tr.nextMove}
           className="flex h-8 w-9 items-center justify-center rounded-lg border border-chip-border bg-chip text-chip-text transition hover:border-chip-hover"
         >
           →
@@ -61,7 +64,7 @@ export function BoardNav({
           onClick={() => onChange(total)}
           className="whitespace-nowrap text-[13px] font-semibold text-on-muted transition hover:text-on-ink"
         >
-          Fin
+          {tr.end}
         </button>
         <span className="whitespace-nowrap pl-1 text-[12.5px] text-on-idle tnum">
           {cursorIdx} / {total}

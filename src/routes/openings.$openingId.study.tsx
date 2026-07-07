@@ -22,7 +22,9 @@ import {
   type PromotionRole,
 } from '../domain/chess';
 import { buildCards, coverCardInReviewRanges, openingStats } from '../domain/cards';
-import { NAG_COLORS, NAG_LABELS, NAG_SYMBOLS } from '../domain/nag';
+import { NAG_COLORS, NAG_SYMBOLS } from '../domain/nag';
+import { useCommon } from '../i18n/common';
+import { useStudyStrings } from '../i18n/study';
 import { newCardStats, review, type Grade } from '../domain/srs';
 import type { Card, Chapter, Opening } from '../domain/types';
 import { cardsRepo, openingsRepo, reviewsRepo } from '../storage/repository';
@@ -147,7 +149,7 @@ function StudyImpl({
     );
     // A stale deep link (repertoire edited since the report) can point at a
     // position with no cards — fall back to a regular session instead of a
-    // misleading "tout est à jour" exercise screen.
+    // misleading "all caught up" exercise screen.
     return cards.length > 0 ? cards : undefined;
   });
 
@@ -239,23 +241,24 @@ function StudyImpl({
 }
 
 function NothingDue({ openingId }: { openingId: string }) {
+  const tr = useStudyStrings();
   return (
     <main className="mx-auto max-w-md px-10 py-16 text-center">
-      <p className="text-2xl font-bold text-on-ink">Tout est à jour.</p>
-      <p className="mt-2 text-sm text-on-muted">Rien à réviser pour le moment.</p>
+      <p className="text-2xl font-bold text-on-ink">{tr.nothingDue.title}</p>
+      <p className="mt-2 text-sm text-on-muted">{tr.nothingDue.body}</p>
       <div className="mt-8 flex justify-center gap-2.5">
         <Link
           to="/openings/$openingId"
           params={{ openingId }}
           className="flex h-11 items-center rounded-btn border border-chip-border bg-chip px-4.5 text-sm font-semibold text-chip-text transition hover:border-chip-hover"
         >
-          Ouvrir
+          {tr.nothingDue.open}
         </Link>
         <Link
           to="/"
           className="btn-accent flex h-11 items-center rounded-btn px-5 text-sm font-semibold"
         >
-          Retour
+          {tr.nothingDue.back}
         </Link>
       </div>
     </main>
@@ -291,6 +294,8 @@ function ReviewSession({
   stats: { pass: number; fail: number; revealed: number };
   onGraded: (outcome: ReviewOutcome) => void;
 }) {
+  const tr = useStudyStrings();
+  const { nagLabels } = useCommon();
   const [queue] = useState(initialQueue);
   const [idx, setIdx] = useState(0);
   const [phase, setPhase] = useState<Phase>('awaiting');
@@ -434,7 +439,7 @@ function ReviewSession({
     annotation?.nag !== undefined ? (
       <span
         className={`text-base font-bold leading-none ${NAG_COLORS[annotation.nag]}`}
-        title={NAG_LABELS[annotation.nag]}
+        title={nagLabels[annotation.nag]}
       >
         {NAG_SYMBOLS[annotation.nag]}
       </span>
@@ -450,7 +455,7 @@ function ReviewSession({
           to="/"
           className="inline-flex items-center gap-2 text-[14.5px] font-semibold text-on-muted transition hover:text-on-ink"
         >
-          ← Sortir
+          {tr.exit}
         </Link>
         <div className="flex w-85 max-w-full items-center gap-3">
           <div className="h-1.75 flex-1 overflow-hidden rounded-full bg-ground-track">
@@ -499,12 +504,12 @@ function ReviewSession({
               <div className="w-full rounded-[14px] border border-line bg-surface px-5 py-4.5 shadow-card">
                 {phase === 'awaiting' && (
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-base font-bold text-ink">Jouez le coup attendu</p>
+                    <p className="text-base font-bold text-ink">{tr.playExpected}</p>
                     <button
                       onClick={() => setPhase('revealed')}
                       className="h-10.5 shrink-0 rounded-[10px] border border-chip-border bg-chip px-4.5 text-sm font-semibold text-chip-text transition hover:border-chip-hover"
                     >
-                      Révéler
+                      {tr.reveal}
                     </button>
                   </div>
                 )}
@@ -512,15 +517,15 @@ function ReviewSession({
                   <>
                     <div className="mb-3.5 flex items-center justify-between gap-3">
                       <span className="flex items-center gap-2 text-[17px] font-bold text-success">
-                        Correct.
+                        {tr.correct}
                         {nagGlyph}
                       </span>
-                      <span className="text-[13.5px] text-meta">Évaluez votre rappel</span>
+                      <span className="text-[13.5px] text-meta">{tr.rateRecall}</span>
                     </div>
                     <div className="grid grid-cols-3 gap-2.5">
-                      <GradeButton onClick={() => grade(3)} label="Difficile" tone="warning" />
-                      <GradeButton onClick={() => grade(4)} label="Bien" tone="success" />
-                      <GradeButton onClick={() => grade(5)} label="Facile" tone="info" />
+                      <GradeButton onClick={() => grade(3)} label={tr.gradeHard} tone="warning" />
+                      <GradeButton onClick={() => grade(4)} label={tr.gradeGood} tone="success" />
+                      <GradeButton onClick={() => grade(5)} label={tr.gradeEasy} tone="info" />
                     </div>
                     {comment && (
                       <p className="mt-3.5 border-l-2 border-line pl-3 text-sm italic text-ink-soft">
@@ -535,12 +540,12 @@ function ReviewSession({
                       <span
                         className={`text-[17px] font-bold ${phase === 'revealed' ? 'text-warning-text' : 'text-danger'}`}
                       >
-                        {phase === 'revealed' ? 'Révélé.' : 'Erreur.'}
+                        {phase === 'revealed' ? tr.revealed : tr.wrong}
                       </span>
                       {nagGlyph}
                     </div>
                     <p className="mt-2 text-[13px] text-meta">
-                      Coup attendu :{' '}
+                      {tr.expectedMove}{' '}
                       <span className="font-semibold text-ink tnum">
                         <FigurineSan san={expectedSan} />
                       </span>
@@ -558,7 +563,7 @@ function ReviewSession({
                           : 'border-danger-border bg-danger-soft text-danger-text'
                       }`}
                     >
-                      Continuer
+                      {tr.continue}
                     </button>
                   </>
                 )}
@@ -572,14 +577,14 @@ function ReviewSession({
                 ✓
               </span>
               <p className="mt-4 text-lg font-bold">
-                {nextDueChapter ? 'Chapitre à jour' : 'Ouverture à jour'}
+                {nextDueChapter ? tr.chapterDone : tr.openingDone}
               </p>
               <p className="mt-1 text-sm text-meta">
                 {nextDueChapter
-                  ? 'Passe au chapitre suivant ou choisis-en un autre à gauche.'
+                  ? tr.nextChapterHint
                   : nextOpening
-                    ? `Au suivant dans le programme : ${nextOpening.name}.`
-                    : 'Plus rien à réviser.'}
+                    ? tr.nextInProgram(nextOpening.name)
+                    : tr.nothingLeft}
               </p>
               <div className="mt-6 flex justify-center gap-2.5">
                 {nextDueChapter ? (
@@ -587,7 +592,7 @@ function ReviewSession({
                     onClick={() => onSelectChapter(nextDueChapter.id)}
                     className="btn-accent flex h-11 items-center rounded-btn px-5 text-sm font-semibold"
                   >
-                    Chapitre suivant
+                    {tr.nextChapter}
                   </button>
                 ) : openingsFile && nextOpening ? (
                   <Link
@@ -596,14 +601,14 @@ function ReviewSession({
                     search={{ program: true }}
                     className="btn-accent flex h-11 items-center rounded-btn px-5 text-sm font-semibold"
                   >
-                    Ouverture suivante
+                    {tr.nextOpening}
                   </Link>
                 ) : null}
                 <Link
                   to="/"
                   className="flex h-11 items-center rounded-btn border border-chip-border bg-chip px-5 text-sm font-semibold text-chip-text transition hover:border-chip-hover"
                 >
-                  Retour
+                  {tr.backHome}
                 </Link>
               </div>
             </div>
@@ -616,12 +621,12 @@ function ReviewSession({
               {opening.name}
             </div>
             <div className="mt-1 text-sm text-meta">
-              {opening.color === 'white' ? 'Trait aux blancs' : 'Trait aux noirs'}
+              {opening.color === 'white' ? tr.whiteToMove : tr.blackToMove}
             </div>
             {activeChapterName && (
               <div className="mt-4 border-t border-line pt-4">
                 <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-                  Chapitre
+                  {tr.chapterLabel}
                 </div>
                 <span
                   className="inline-flex max-w-full items-center gap-1.75 rounded-full border border-accent-soft-border bg-accent-soft px-2.75 py-1.25 text-[12.5px] font-semibold text-accent-soft-text"
@@ -636,26 +641,26 @@ function ReviewSession({
 
           <div className="rounded-card border border-line bg-surface px-5 py-4.5 shadow-card">
             <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-              Cette session
+              {tr.thisSession}
             </div>
             <div className="flex gap-5.5">
-              <Stat value={stats.pass} label="bonnes" tone="text-success" />
-              <Stat value={stats.fail} label="erreurs" tone="text-danger" />
-              <Stat value={stats.revealed} label="révélés" tone="text-warning-text" />
+              <Stat value={stats.pass} label={tr.statPass} tone="text-success" />
+              <Stat value={stats.fail} label={tr.statFail} tone="text-danger" />
+              <Stat value={stats.revealed} label={tr.statRevealed} tone="text-warning-text" />
             </div>
             <div className="mt-4 border-t border-line pt-4">
               <div className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-                Restantes
+                {tr.remainingTitle}
               </div>
               <div className="space-y-2 text-sm">
-                <RemainingRow label="Ce chapitre" value={remaining} tone="text-accent" />
+                <RemainingRow label={tr.remainingChapter} value={remaining} tone="text-accent" />
                 {openingsFile ? (
                   <>
-                    <RemainingRow label="Cette ouverture" value={openingDue} tone="text-ink" />
-                    <RemainingRow label="Cette session" value={programDue ?? 0} tone="text-ink-soft" />
+                    <RemainingRow label={tr.remainingOpening} value={openingDue} tone="text-ink" />
+                    <RemainingRow label={tr.remainingSession} value={programDue ?? 0} tone="text-ink-soft" />
                   </>
                 ) : (
-                  <RemainingRow label="Cette session" value={openingDue} tone="text-ink" />
+                  <RemainingRow label={tr.remainingSession} value={openingDue} tone="text-ink" />
                 )}
               </div>
             </div>
@@ -673,10 +678,11 @@ function OpeningsFile({
   items: OpeningFileItem[];
   activeId: string;
 }) {
+  const tr = useStudyStrings();
   return (
     <div className="mb-5 flex items-center gap-2 overflow-x-auto pb-1">
       <span className="shrink-0 pr-1 text-[11px] font-bold uppercase tracking-[0.14em] text-on-muted">
-        À réviser
+        {tr.toReview}
       </span>
       {items.map(o => {
         const active = o.id === activeId;
@@ -720,10 +726,11 @@ function ChapterRail({
   activeId: string;
   onSelect: (id: string) => void;
 }) {
+  const tr = useStudyStrings();
   return (
     <aside className="flex flex-col gap-1.5">
       <h2 className="mx-1 mb-3.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-on-muted">
-        Chapitres
+        {tr.chapters}
       </h2>
       {chapters.map(c => {
         const active = c.id === activeId;
@@ -821,6 +828,7 @@ function GradeButton({
  * and the chapter's review windows widened to include the ply.
  */
 function ExerciseDone({ opening, cards }: { opening: Opening; cards: Card[] }) {
+  const tr = useStudyStrings();
   const [reintegrated, setReintegrated] = useState(false);
 
   const reintegrate = () => {
@@ -848,26 +856,17 @@ function ExerciseDone({ opening, cards }: { opening: Opening; cards: Card[] }) {
       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-success-soft text-2xl text-success-text">
         ✓
       </span>
-      <p className="mt-4 text-lg font-bold">Exercice terminé</p>
-      {reintegrated ? (
-        <p className="mt-1 max-w-sm text-sm text-meta">
-          Réintégré : la position est due dès maintenant et reprendra la
-          progression habituelle des révisions.
-        </p>
-      ) : (
-        <p className="mt-1 max-w-sm text-sm text-meta">
-          Réintégrer ce coup dans la révision fréquente ? La carte repart
-          comme nouvelle (due dès maintenant) et la fenêtre de révision du
-          chapitre s'élargit pour l'inclure.
-        </p>
-      )}
+      <p className="mt-4 text-lg font-bold">{tr.exercise.done}</p>
+      <p className="mt-1 max-w-sm text-sm text-meta">
+        {reintegrated ? tr.exercise.reintegrated : tr.exercise.prompt}
+      </p>
       <div className="mt-6 flex justify-center gap-2.5">
         {!reintegrated && (
           <button
             onClick={reintegrate}
             className="btn-accent flex h-11 items-center rounded-btn px-5 text-sm font-semibold"
           >
-            Oui, réintégrer
+            {tr.exercise.yes}
           </button>
         )}
         <Link
@@ -875,7 +874,7 @@ function ExerciseDone({ opening, cards }: { opening: Opening; cards: Card[] }) {
           params={{ openingId: opening.id }}
           className="flex h-11 items-center rounded-btn border border-chip-border bg-chip px-5 text-sm font-semibold text-chip-text transition hover:border-chip-hover"
         >
-          {reintegrated ? "Retour à l'ouverture" : 'Non merci'}
+          {reintegrated ? tr.exercise.backToOpening : tr.exercise.noThanks}
         </Link>
       </div>
     </div>

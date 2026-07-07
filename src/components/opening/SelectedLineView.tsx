@@ -1,7 +1,9 @@
 import { Fragment, useMemo } from 'react';
 import { FigurineSan } from '../FigurineSan';
 import { chessFromFen, sameMove, turnColor, uciToSanAt } from '../../domain/chess';
-import { NAG_COLORS, NAG_LABELS, NAG_SYMBOLS } from '../../domain/nag';
+import { NAG_COLORS, NAG_SYMBOLS } from '../../domain/nag';
+import { useCommon } from '../../i18n/common';
+import { useComponentStrings } from '../../i18n/components';
 import { buildPrefixTrie, continuationsAt } from '../../domain/tree';
 import type { Line, Nag } from '../../domain/types';
 
@@ -40,6 +42,7 @@ export function SelectedLineView({
   onSetCursor,
   onSwitchLine,
 }: SelectedLineProps) {
+  const tr = useComponentStrings().lineView;
   // Read the starting fullmove number and side-to-move from the chapter's
   // starting FEN. A chapter that begins after `3.d4` (black to move at
   // fullmove 3) needs to label its first move "3..." and reserve an empty
@@ -63,7 +66,7 @@ export function SelectedLineView({
               : 'text-meta hover:bg-track'
           }`}
         >
-          (position initiale — jouez un coup)
+          {tr.initialPosition}
         </button>
       </div>
     );
@@ -175,6 +178,7 @@ function MoveCell({
   onSwitchLine,
   shaded,
 }: MoveCellProps) {
+  const { nagLabels } = useCommon();
   const hasMove = pos < line.moves.length;
   const isTail = pos === tailPos;
   const fen = fenAtPosition.get(pos);
@@ -205,7 +209,7 @@ function MoveCell({
             {nag !== undefined && (
               <span
                 className={`text-xs font-bold leading-none ${NAG_COLORS[nag]}`}
-                title={NAG_LABELS[nag]}
+                title={nagLabels[nag]}
               >
                 {NAG_SYMBOLS[nag]}
               </span>
@@ -257,10 +261,11 @@ function AltChip({
   san: string;
   onClick: () => void;
 }) {
+  const tr = useComponentStrings().lineView;
   return (
     <button
       onClick={onClick}
-      title={`Basculer sur la variante ${san}`}
+      title={tr.switchToVariant(san)}
       className="cursor-pointer italic text-ink-muted transition hover:text-ink"
     >
       (<FigurineSan san={san} />)

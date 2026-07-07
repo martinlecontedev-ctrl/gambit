@@ -1,5 +1,7 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { FigurineSan } from '../FigurineSan';
+import { LOCALES, useLang } from '../../i18n';
+import { useComponentStrings } from '../../i18n/components';
 import {
   ExplorerRateLimited,
   ExplorerUnauthorized,
@@ -15,11 +17,6 @@ const EXPLORER_SOURCES: { id: ExplorerSource; label: string }[] = [
   { id: 'lichess', label: 'Lichess' },
 ];
 
-const GAMES_FMT = new Intl.NumberFormat('fr-FR', {
-  notation: 'compact',
-  maximumFractionDigits: 1,
-});
-
 /**
  * Lichess opening explorer panel: for the position under the cursor, the
  * most played moves with their game share and the win/draw/loss split.
@@ -34,6 +31,16 @@ export function ExplorerPanel({
   fen: string;
   onPlayMove: (uci: string) => void;
 }) {
+  const tr = useComponentStrings().explorer;
+  const lang = useLang();
+  const gamesFmt = useMemo(
+    () =>
+      new Intl.NumberFormat(LOCALES[lang], {
+        notation: 'compact',
+        maximumFractionDigits: 1,
+      }),
+    [lang],
+  );
   const [enabled, setEnabled] = useState<boolean>(() => {
     try {
       return localStorage.getItem('gambit.explorer.enabled') === '1';
@@ -114,7 +121,7 @@ export function ExplorerPanel({
   return (
     <div className="rounded-[14px] border border-line bg-surface p-4 text-ink shadow-resting">
       <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-        Explorateur
+        {tr.title}
       </div>
       {/* Controls sit under the title: the 240px column can't fit them on
           the same line. */}
@@ -135,11 +142,7 @@ export function ExplorerPanel({
           ))}
         <button
           onClick={toggle}
-          title={
-            enabled
-              ? 'Désactiver l’explorateur'
-              : 'Activer (interroge l’API publique de Lichess)'
-          }
+          title={enabled ? tr.disable : tr.enable}
           className={`rounded-full border px-2.5 py-0.5 text-[11.5px] font-semibold transition ${
             enabled
               ? 'border-info-border bg-info-soft text-info-text'
@@ -151,42 +154,33 @@ export function ExplorerPanel({
       </div>
 
       {!enabled ? (
-        <p className="text-[12.5px] text-meta">
-          Coups les plus joués et résultats associés (parties Lichess 1800+ ou
-          parties de maîtres), pour la position affichée.
-        </p>
+        <p className="text-[12.5px] text-meta">{tr.blurb}</p>
       ) : status === 'unauthorized' ? (
         <div className="space-y-2.5">
           <p className="text-[12.5px] text-meta">
-            {account
-              ? 'Session Lichess expirée ou révoquée — reconnecte ton compte.'
-              : "L'explorateur passe par ton compte Lichess (gratuit, aucun scope demandé)."}
+            {account ? tr.sessionExpired : tr.needsAccount}
           </p>
           <button
             onClick={() => void login()}
             className="btn-accent w-full rounded-md px-3 py-2 text-xs font-semibold"
           >
-            Connecter mon compte Lichess
+            {tr.connect}
           </button>
         </div>
       ) : status === 'error' ? (
-        <p className="text-[12.5px] text-meta">Explorateur indisponible.</p>
+        <p className="text-[12.5px] text-meta">{tr.unavailable}</p>
       ) : status === 'limited' ? (
-        <p className="text-[12.5px] text-warning-text">
-          Limite de l'API atteinte — l'explorateur se met en pause une minute.
-        </p>
+        <p className="text-[12.5px] text-warning-text">{tr.rateLimited}</p>
       ) : !result ? (
-        <p className="animate-pulse text-[12.5px] text-meta">Chargement…</p>
+        <p className="animate-pulse text-[12.5px] text-meta">{tr.loading}</p>
       ) : result.moves.length === 0 ? (
-        <p className="text-[12.5px] text-meta">
-          Aucune partie dans cette base pour cette position.
-        </p>
+        <p className="text-[12.5px] text-meta">{tr.noGames}</p>
       ) : (
         <div
           className={`transition-opacity ${status === 'loading' ? 'opacity-45' : ''}`}
         >
           <p className="mb-2 text-[11.5px] text-meta tnum">
-            {GAMES_FMT.format(result.total)} parties
+            {tr.games(gamesFmt.format(result.total))}
           </p>
           <div className="space-y-1">
             {result.moves.map(m => (
@@ -213,6 +207,8 @@ function ExplorerRow({
   positionTotal: number;
   onPlay: () => void;
 }) {
+  const tr = useComponentStrings().explorer;
+  const lang = useLang();
   const share =
     positionTotal > 0 ? Math.round((move.total / positionTotal) * 100) : 0;
   const wp = move.total > 0 ? (move.white / move.total) * 100 : 0;
@@ -221,7 +217,12 @@ function ExplorerRow({
   return (
     <div
       className="flex items-center gap-2"
-      title={`${move.total.toLocaleString('fr-FR')} parties · Blancs ${Math.round(wp)}% · Nulles ${Math.round(dp)}% · Noirs ${Math.round(bp)}%`}
+      title={tr.rowTitle(
+        move.total.toLocaleString(LOCALES[lang]),
+        Math.round(wp),
+        Math.round(dp),
+        Math.round(bp),
+      )}
     >
       <button
         onClick={onPlay}

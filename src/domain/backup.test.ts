@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BACKUP_SCHEMA_VERSION,
-  backupSummary,
+  backupCounts,
   buildBackup,
   parseBackup,
   type BackupData,
@@ -57,10 +57,7 @@ describe('buildBackup / parseBackup round-trip', () => {
 
 describe('parseBackup rejections', () => {
   it('rejects invalid JSON', () => {
-    expect(parseBackup('{not json')).toEqual({
-      ok: false,
-      error: 'Fichier illisible (JSON invalide).',
-    });
+    expect(parseBackup('{not json')).toEqual({ ok: false, error: 'invalid-json' });
   });
 
   it('rejects non-Gambit files (wrong app, missing version, PGN pasted as JSON)', () => {
@@ -73,7 +70,7 @@ describe('parseBackup rejections', () => {
     ]) {
       const res = parseBackup(json);
       expect(res.ok).toBe(false);
-      if (!res.ok) expect(res.error).toBe('Ce fichier n’est pas une sauvegarde Gambit.');
+      if (!res.ok) expect(res.error).toBe('not-gambit');
     }
   });
 
@@ -81,7 +78,7 @@ describe('parseBackup rejections', () => {
     const backup = { ...buildBackup(data, 0), schemaVersion: BACKUP_SCHEMA_VERSION + 1 };
     const res = parseBackup(JSON.stringify(backup));
     expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error).toMatch(/version plus récente/);
+    if (!res.ok) expect(res.error).toBe('newer-version');
   });
 
   it('rejects truncated payloads (missing or malformed collections)', () => {
@@ -95,7 +92,7 @@ describe('parseBackup rejections', () => {
     for (const b of broken) {
       const res = parseBackup(JSON.stringify(b));
       expect(res.ok).toBe(false);
-      if (!res.ok) expect(res.error).toBe('Sauvegarde incomplète ou corrompue.');
+      if (!res.ok) expect(res.error).toBe('malformed');
     }
   });
 
@@ -107,11 +104,8 @@ describe('parseBackup rejections', () => {
   });
 });
 
-describe('backupSummary', () => {
-  it('counts with singular/plural forms', () => {
-    expect(backupSummary(data)).toBe('1 ouverture, 1 carte, 1 révision, 1 dossier');
-    expect(
-      backupSummary({ openings: [], cards: [], reviews: [], folders: [], studySync: {} }),
-    ).toBe('0 ouverture, 0 carte, 0 révision, 0 dossier');
+describe('backupCounts', () => {
+  it('counts every collection', () => {
+    expect(backupCounts(data)).toEqual({ openings: 1, cards: 1, reviews: 1, folders: 1 });
   });
 });

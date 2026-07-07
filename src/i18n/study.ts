@@ -1,0 +1,111 @@
+import { useStrings } from './index';
+
+const fr = {
+  exit: '← Sortir',
+  toReview: 'À réviser',
+  chapters: 'Chapitres',
+  playExpected: 'Jouez le coup attendu',
+  reveal: 'Révéler',
+  correct: 'Correct.',
+  rateRecall: 'Évaluez votre rappel',
+  gradeHard: 'Difficile',
+  gradeGood: 'Bien',
+  gradeEasy: 'Facile',
+  revealed: 'Révélé.',
+  wrong: 'Erreur.',
+  expectedMove: 'Coup attendu :',
+  continue: 'Continuer',
+  chapterDone: 'Chapitre à jour',
+  openingDone: 'Ouverture à jour',
+  nextChapterHint: 'Passe au chapitre suivant ou choisis-en un autre à gauche.',
+  nextInProgram: (name: string) => `Au suivant dans le programme : ${name}.`,
+  nothingLeft: 'Plus rien à réviser.',
+  nextChapter: 'Chapitre suivant',
+  nextOpening: 'Ouverture suivante',
+  backHome: 'Retour',
+  whiteToMove: 'Trait aux blancs',
+  blackToMove: 'Trait aux noirs',
+  chapterLabel: 'Chapitre',
+  thisSession: 'Cette session',
+  statPass: 'bonnes',
+  statFail: 'erreurs',
+  statRevealed: 'révélés',
+  remainingTitle: 'Restantes',
+  remainingChapter: 'Ce chapitre',
+  remainingOpening: 'Cette ouverture',
+  remainingSession: 'Cette session',
+  nothingDue: {
+    title: 'Tout est à jour.',
+    body: 'Rien à réviser pour le moment.',
+    open: 'Ouvrir',
+    back: 'Retour',
+  },
+  exercise: {
+    done: 'Exercice terminé',
+    reintegrated:
+      'Réintégré : la position est due dès maintenant et reprendra la progression habituelle des révisions.',
+    prompt:
+      "Réintégrer ce coup dans la révision fréquente ? La carte repart comme nouvelle (due dès maintenant) et la fenêtre de révision du chapitre s'élargit pour l'inclure.",
+    yes: 'Oui, réintégrer',
+    backToOpening: "Retour à l'ouverture",
+    noThanks: 'Non merci',
+  },
+};
+
+const en: typeof fr = {
+  exit: '← Exit',
+  toReview: 'To review',
+  chapters: 'Chapters',
+  playExpected: 'Play the expected move',
+  reveal: 'Reveal',
+  correct: 'Correct.',
+  rateRecall: 'Rate your recall',
+  gradeHard: 'Hard',
+  gradeGood: 'Good',
+  gradeEasy: 'Easy',
+  revealed: 'Revealed.',
+  wrong: 'Wrong.',
+  expectedMove: 'Expected move:',
+  continue: 'Continue',
+  chapterDone: 'Chapter caught up',
+  openingDone: 'Opening caught up',
+  nextChapterHint: 'Move on to the next chapter or pick another on the left.',
+  nextInProgram: (name: string) => `Next in the program: ${name}.`,
+  nothingLeft: 'Nothing left to review.',
+  nextChapter: 'Next chapter',
+  nextOpening: 'Next opening',
+  backHome: 'Back',
+  whiteToMove: 'White to move',
+  blackToMove: 'Black to move',
+  chapterLabel: 'Chapter',
+  thisSession: 'This session',
+  statPass: 'correct',
+  statFail: 'mistakes',
+  statRevealed: 'revealed',
+  remainingTitle: 'Remaining',
+  remainingChapter: 'This chapter',
+  remainingOpening: 'This opening',
+  remainingSession: 'This session',
+  nothingDue: {
+    title: 'All caught up.',
+    body: 'Nothing to review right now.',
+    open: 'Open',
+    back: 'Back',
+  },
+  exercise: {
+    done: 'Exercise complete',
+    reintegrated:
+      'Reintegrated: the position is due right now and will resume the usual review schedule.',
+    prompt:
+      'Fold this move back into frequent review? The card restarts as new (due right now) and the chapter’s review window widens to include it.',
+    yes: 'Yes, reintegrate',
+    backToOpening: 'Back to the opening',
+    noThanks: 'No thanks',
+  },
+};
+
+export const STUDY = { fr, en };
+
+export function useStudyStrings() {
+  return useStrings(STUDY);
+}

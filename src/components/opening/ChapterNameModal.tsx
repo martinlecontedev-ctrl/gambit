@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Modal } from '../Modal';
+import { useCommon } from '../../i18n/common';
+import { useComponentStrings } from '../../i18n/components';
 
 export function ChapterNameModal({
   forced,
@@ -12,6 +14,8 @@ export function ChapterNameModal({
   onConfirm: (name: string) => void;
   onCancel: () => void;
 }) {
+  const tr = useComponentStrings().chapterModal;
+  const common = useCommon();
   const [name, setName] = useState(defaultName);
   // Select the prefilled text on first focus so a single keypress overwrites
   // the suggestion when the user wants a different name.
@@ -26,19 +30,17 @@ export function ChapterNameModal({
     onConfirm(trimmed);
   };
   return (
-    <Modal open onClose={onCancel} title="Nouveau chapitre">
+    <Modal open onClose={onCancel} title={tr.title}>
       <form onSubmit={submit} className="space-y-3">
         <p className="text-xs text-meta">
-          {forced
-            ? 'Tu joues un coup différent sur ta couleur. Donne un nom au chapitre qui va porter cette variante — la révision saura ainsi quelle théorie tu veux driller.'
-            : 'Crée un chapitre vide pour ranger une nouvelle ligne.'}
+          {forced ? tr.forcedHelp : tr.emptyHelp}
         </p>
         <input
           ref={inputRef}
           type="text"
           value={name}
           onChange={e => setName(e.target.value)}
-          placeholder="Ex. Najdorf — Anglaise"
+          placeholder={tr.placeholder}
           autoFocus
           className="w-full rounded-md border border-line bg-field px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent-soft-border focus:outline-none"
         />
@@ -48,14 +50,14 @@ export function ChapterNameModal({
             onClick={onCancel}
             className="rounded-lg border border-chip-border bg-chip px-4 py-2 text-sm text-chip-text hover:border-chip-hover"
           >
-            Annuler
+            {common.cancel}
           </button>
           <button
             type="submit"
             disabled={!name.trim()}
             className="btn-accent rounded-btn px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Créer le chapitre
+            {tr.create}
           </button>
         </div>
       </form>

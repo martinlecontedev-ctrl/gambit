@@ -21,6 +21,8 @@ import {
   type OpeningStats,
 } from '../domain/cards';
 import type { Card, Color, Folder, Opening, ReviewEvent } from '../domain/types';
+import { LOCALES, useLang } from '../i18n';
+import { useHomeStrings } from '../i18n/home';
 import {
   cardsRepo,
   foldersRepo,
@@ -35,6 +37,7 @@ export const Route = createFileRoute('/')({ component: Home });
 type FolderFilter = 'none' | string;
 
 function Home() {
+  const tr = useHomeStrings();
   const openings = useStored(() => openingsRepo.list());
   const cards = useStored(() => cardsRepo.list());
   const folders = useStored(() => foldersRepo.list());
@@ -136,12 +139,12 @@ function Home() {
       <div className="mb-6.5 flex flex-wrap items-end justify-between gap-6">
         <div>
           <h1 className="text-[42px] font-extrabold leading-none tracking-[-0.02em] text-on-ink">
-            Ouvertures
+            {tr.title}
           </h1>
           <p className="mt-2 text-[15px] text-on-muted">
             {openings.length === 0
-              ? 'Créez votre première ouverture pour commencer.'
-              : `${openings.length} ouverture${openings.length > 1 ? 's' : ''} · ${folders.length} dossier${folders.length > 1 ? 's' : ''}`}
+              ? tr.emptySubtitle
+              : tr.counts(openings.length, folders.length)}
           </p>
         </div>
         <div className="flex gap-3">
@@ -149,13 +152,13 @@ function Home() {
             onClick={() => setImportOpen(true)}
             className="h-11 rounded-btn border border-chip-border bg-chip px-4.5 text-[14.5px] font-semibold text-chip-text shadow-resting transition hover:border-chip-hover"
           >
-            Importer
+            {tr.importBtn}
           </button>
           <Link
             to="/openings/new"
             className="btn-accent flex h-11 items-center rounded-btn px-5 text-[14.5px] font-semibold"
           >
-            + Nouvelle ouverture
+            {tr.newOpeningBtn}
           </Link>
         </div>
       </div>
@@ -221,6 +224,7 @@ function ReviewBanner({
   done: number;
   dueOpenings: Opening[];
 }) {
+  const tr = useHomeStrings();
   const displayTotal = done + totalDue;
   const pct = displayTotal > 0 ? Math.round((done / displayTotal) * 100) : 0;
 
@@ -231,11 +235,9 @@ function ReviewBanner({
           ✓
         </span>
         <div>
-          <p className="text-lg font-bold">Tout est à jour</p>
+          <p className="text-lg font-bold">{tr.banner.allDone}</p>
           <p className="text-sm text-meta">
-            {done > 0
-              ? `${done} position${done > 1 ? 's' : ''} révisée${done > 1 ? 's' : ''} aujourd'hui.`
-              : "Rien à réviser pour aujourd'hui."}
+            {done > 0 ? tr.banner.reviewedToday(done) : tr.banner.nothingToday}
           </p>
         </div>
       </div>
@@ -257,11 +259,10 @@ function ReviewBanner({
           </span>
           <div>
             <p className="text-lg font-bold leading-tight">
-              position{totalDue > 1 ? 's' : ''} à réviser aujourd'hui
+              {tr.banner.dueToday(totalDue)}
             </p>
             <p className="mt-1 text-sm text-meta">
-              réparti{totalDue > 1 ? 'es' : 'e'} sur {dueOpenings.length} ouverture
-              {dueOpenings.length > 1 ? 's' : ''}
+              {tr.banner.spread(totalDue, dueOpenings.length)}
               {namesLabel && ` · ${namesLabel}`}
             </p>
           </div>
@@ -272,7 +273,7 @@ function ReviewBanner({
           search={{ program: true }}
           className="btn-accent flex h-11.5 items-center rounded-btn px-5.5 text-[15px] font-semibold"
         >
-          Démarrer la révision
+          {tr.banner.start}
         </Link>
       </div>
       <div className="mt-4.5 flex items-center gap-3">
@@ -283,8 +284,7 @@ function ReviewBanner({
           />
         </div>
         <span className="shrink-0 text-[12.5px] text-ink-muted tnum">
-          {done} faite{done > 1 ? 's' : ''} · {totalDue} restante
-          {totalDue > 1 ? 's' : ''}
+          {tr.banner.progress(done, totalDue)}
         </span>
       </div>
     </div>
@@ -313,14 +313,20 @@ function buildGraphDays(byDay: Map<string, number>, now: number): GraphDay[] {
   return days;
 }
 
-const TICK_FMT = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
-const DAY_FMT = new Intl.DateTimeFormat('fr-FR', {
-  weekday: 'short',
-  day: 'numeric',
-  month: 'long',
-});
-
 function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number }) {
+  const tr = useHomeStrings();
+  const lang = useLang();
+  const fmt = useMemo(
+    () => ({
+      tick: new Intl.DateTimeFormat(LOCALES[lang], { day: 'numeric', month: 'short' }),
+      day: new Intl.DateTimeFormat(LOCALES[lang], {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'long',
+      }),
+    }),
+    [lang],
+  );
   const byDay = useMemo(() => activityByDay(reviews), [reviews]);
   const streak = useMemo(() => streaks(reviews, now), [reviews, now]);
   const graph = useMemo(() => buildGraphDays(byDay, now), [byDay, now]);
@@ -337,7 +343,7 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
     <div className="flex items-stretch gap-8 rounded-[18px] border border-line bg-surface px-6 py-5.5 text-ink shadow-card">
       <div className="w-64 shrink-0 border-r border-line pr-8">
         <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-          Série
+          {tr.activity.streakTitle}
         </div>
         <div className="mt-2.5 flex items-baseline gap-2.5">
           <span
@@ -348,31 +354,29 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
             {streak.current}
           </span>
           <span className="text-lg font-bold leading-tight">
-            jour{streak.current > 1 ? 's' : ''} d'affilée
+            {tr.activity.daysInARow(streak.current)}
           </span>
         </div>
         <div className="mt-3.5">
           {streak.todayDone ? (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-success-border bg-success-soft px-2.75 py-1.25 text-[12.5px] font-semibold text-success-text">
-              ✓ Validée aujourd'hui
+              ✓ {tr.activity.doneToday}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-warning-border bg-warning-soft px-2.75 py-1.25 text-[12.5px] font-semibold text-warning-text">
-              {streak.current > 0
-                ? "Révise aujourd'hui pour la garder"
-                : 'Révise une position pour la lancer'}
+              {streak.current > 0 ? tr.activity.keepIt : tr.activity.startIt}
             </span>
           )}
         </div>
         <div className="mt-4 space-y-1 text-[12.5px] text-meta">
           <p>
-            Record :{' '}
-            <span className="font-bold text-ink-soft tnum">{streak.best}</span> jour
-            {streak.best > 1 ? 's' : ''}
+            {tr.activity.record}{' '}
+            <span className="font-bold text-ink-soft tnum">{streak.best}</span>{' '}
+            {tr.activity.days(streak.best)}
           </p>
           <p>
-            <span className="font-bold text-ink-soft tnum">{yearTotal}</span> révision
-            {yearTotal > 1 ? 's' : ''} sur 12 mois
+            <span className="font-bold text-ink-soft tnum">{yearTotal}</span>{' '}
+            {tr.activity.reviewsYear(yearTotal)}
           </p>
         </div>
       </div>
@@ -380,12 +384,10 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="mb-2 flex items-baseline justify-between">
           <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-            Activité · 8 semaines
+            {tr.activity.graphTitle}
           </span>
           <span className="text-[11.5px] text-meta">
-            {peak > 0
-              ? `pic : ${peak} révision${peak > 1 ? 's' : ''} / jour`
-              : 'une barre par jour — la première révision la fait naître'}
+            {peak > 0 ? tr.activity.peak(peak) : tr.activity.noBars}
           </span>
         </div>
         {/* One flex-1 bar per day: uniform widths at any card width, no chart
@@ -397,7 +399,7 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
             return (
               <span
                 key={day.key}
-                title={`${day.count} révision${day.count > 1 ? 's' : ''} · ${DAY_FMT.format(day.date)}`}
+                title={tr.activity.dayTooltip(day.count, fmt.day.format(day.date))}
                 className="flex-1 rounded-t-xs transition-[filter] hover:brightness-90"
                 style={{
                   height:
@@ -419,10 +421,10 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
         </div>
         <div className="mt-1 border-t border-line pt-1.5">
           <div className="flex justify-between text-[10.5px] text-ink-muted">
-            <span>{TICK_FMT.format(graph[0].date)}</span>
-            <span>{TICK_FMT.format(graph[Math.floor(GRAPH_DAYS / 2)].date)}</span>
+            <span>{fmt.tick.format(graph[0].date)}</span>
+            <span>{fmt.tick.format(graph[Math.floor(GRAPH_DAYS / 2)].date)}</span>
             <span className={streak.todayDone ? 'font-semibold text-accent-soft-text' : ''}>
-              aujourd'hui
+              {tr.activity.today}
             </span>
           </div>
         </div>
@@ -456,6 +458,7 @@ function FolderSidebar({
   onHover: (t: FolderFilter | undefined) => void;
   onDrop: (t: FolderFilter) => void;
 }) {
+  const tr = useHomeStrings();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [renamingId, setRenamingId] = useState<string | undefined>();
@@ -485,15 +488,7 @@ function FolderSidebar({
 
   const deleteFolder = (folder: Folder) => {
     const count = countsByFolder.get(folder.id) ?? 0;
-    let message = `Supprimer le dossier "${folder.name}" ?`;
-    if (count > 0) {
-      const plural = count > 1;
-      message +=
-        `\n\n⚠️  LE CONTENU DE CE DOSSIER SERA ÉGALEMENT SUPPRIMÉ.` +
-        `\n\n${count} ouverture${plural ? 's' : ''} ${plural ? 'vont' : 'va'} disparaître, avec leurs lignes, annotations et cartes de révision.` +
-        `\n\nCette action est définitive.`;
-    }
-    if (confirm(message)) {
+    if (confirm(tr.folders.deleteConfirm(folder.name, count))) {
       foldersRepo.delete(folder.id);
     }
   };
@@ -501,10 +496,10 @@ function FolderSidebar({
   return (
     <aside className="flex flex-col gap-1">
       <h2 className="mx-1 mb-3.5 mt-1.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-on-muted">
-        Dossiers
+        {tr.folders.title}
       </h2>
       <SidebarItem
-        label="Sans dossier"
+        label={tr.folders.none}
         count={noneCount}
         due={noneDue}
         active={selected === 'none'}
@@ -559,7 +554,7 @@ function FolderSidebar({
                 setNewName('');
               }
             }}
-            placeholder="Nom du dossier"
+            placeholder={tr.folders.namePlaceholder}
             className="w-full rounded-input border border-ground-line bg-ground-overlay px-3 py-2 text-sm text-on-ink placeholder:text-on-muted focus:border-accent-ground focus:outline-none"
           />
         </div>
@@ -568,7 +563,7 @@ function FolderSidebar({
           onClick={() => setCreating(true)}
           className="mt-3.5 flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[13.5px] font-semibold text-on-muted transition hover:bg-ground-overlay hover:text-on-ink"
         >
-          + Nouveau dossier
+          {tr.folders.newFolder}
         </button>
       )}
     </aside>
@@ -614,6 +609,7 @@ function SidebarItem({
   onRenameCancel?: () => void;
   onDelete?: () => void;
 }) {
+  const tr = useHomeStrings();
   const dropHandlers = droppable
     ? {
         onDragOver: (e: DragEvent) => {
@@ -679,7 +675,7 @@ function SidebarItem({
                 e.stopPropagation();
                 onRenameStart();
               }}
-              title="Renommer"
+              title={tr.folders.rename}
               className="rounded p-1 text-xs text-ink-soft transition hover:bg-track hover:text-ink"
             >
               ✎
@@ -691,7 +687,7 @@ function SidebarItem({
                 e.stopPropagation();
                 onDelete();
               }}
-              title="Supprimer le dossier"
+              title={tr.folders.deleteTitle}
               className="rounded p-1 text-xs text-ink-soft transition hover:bg-danger-soft hover:text-danger-text"
             >
               ✕
@@ -716,6 +712,7 @@ function OpeningCard({
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
+  const tr = useHomeStrings();
   const masteryPct =
     stats.total > 0 ? Math.round((stats.mastered / stats.total) * 100) : 0;
   const reviewOn = openingReviewOn(opening);
@@ -746,24 +743,20 @@ function OpeningCard({
         <div>
           <h2 className="text-[21px] font-bold tracking-[-0.01em]">{opening.name}</h2>
           <p className="mt-1.5 text-[11.5px] font-bold uppercase tracking-widest text-ink-muted">
-            {opening.color === 'white' ? 'Blancs' : 'Noirs'} · {opening.lines.length} ligne
-            {opening.lines.length > 1 ? 's' : ''}
+            {opening.color === 'white' ? tr.white : tr.black} ·{' '}
+            {tr.card.lines(opening.lines.length)}
           </p>
         </div>
         <div className="flex items-center gap-2.5">
           <ReviewSwitch on={reviewOn} onToggle={toggleReview} />
           <button
             onClick={() => {
-              if (
-                confirm(
-                  `Supprimer "${opening.name}" ?\n\nLes lignes, annotations et cartes de révision associées seront perdues.`,
-                )
-              ) {
+              if (confirm(tr.card.deleteConfirm(opening.name))) {
                 openingsRepo.delete(opening.id);
               }
             }}
-            title="Supprimer cette ouverture"
-            aria-label="Supprimer cette ouverture"
+            title={tr.card.deleteTitle}
+            aria-label={tr.card.deleteTitle}
             className="rounded p-1 text-lg leading-none text-ink-muted transition hover:bg-danger-soft hover:text-danger-text"
           >
             ✕
@@ -774,7 +767,7 @@ function OpeningCard({
       <div className="mt-4">
         <div className="mb-1.5 flex items-baseline justify-between">
           <span className="text-[11.5px] font-bold uppercase tracking-[0.08em] text-ink-muted">
-            Maîtrise
+            {tr.card.mastery}
           </span>
           <span className="text-[12.5px] font-bold text-accent-soft-text tnum">
             {reviewOn ? `${masteryPct}%` : '—'}
@@ -791,18 +784,18 @@ function OpeningCard({
       <div className="mt-3.5 h-7">
         {!reviewOn ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-track px-2.75 py-1.25 text-[12.5px] font-semibold text-ink-muted">
-            Hors révision
+            {tr.card.notInReview}
           </span>
         ) : stats.due > 0 ? (
           <span className="inline-flex items-center gap-1.75 rounded-full border border-accent-soft-border bg-accent-soft px-2.75 py-1.25 text-[12.5px] font-semibold text-accent-soft-text">
             <span className="h-1.75 w-1.75 rounded-full bg-accent-dot" />
-            {stats.due} à réviser
+            {tr.card.due(stats.due)}
           </span>
         ) : (
           stats.total > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-track px-2.75 py-1.25 text-[12.5px] font-semibold text-ink-soft">
               <span className="text-success">✓</span>
-              Révisé
+              {tr.card.reviewed}
             </span>
           )
         )}
@@ -816,7 +809,7 @@ function OpeningCard({
             search={{ program: false }}
             className="btn-accent flex h-10.5 flex-1 items-center justify-center rounded-[10px] text-sm font-semibold"
           >
-            Réviser
+            {tr.card.review}
           </Link>
         )}
         <Link
@@ -824,7 +817,7 @@ function OpeningCard({
           params={{ openingId: opening.id }}
           className="flex h-10.5 flex-1 items-center justify-center rounded-[10px] border border-line-strong bg-surface-high text-sm font-semibold text-ink transition hover:bg-field"
         >
-          Ouvrir
+          {tr.card.open}
         </Link>
       </div>
     </li>
@@ -832,10 +825,8 @@ function OpeningCard({
 }
 
 function EmptyState({ selected }: { selected: FolderFilter }) {
-  const msg =
-    selected === 'none'
-      ? 'Aucune ouverture hors dossier.'
-      : 'Ce dossier est vide. Glisse-dépose une ouverture ici depuis un autre dossier.';
+  const tr = useHomeStrings();
+  const msg = selected === 'none' ? tr.empty.root : tr.empty.folder;
   return (
     <div className="rounded-card border border-dashed border-on-dash bg-ground-overlay p-16 text-center text-on-muted">
       {msg}
@@ -846,6 +837,7 @@ function EmptyState({ selected }: { selected: FolderFilter }) {
 type ImportMode = 'pgn' | 'lichess' | 'file';
 
 function ImportModal({ onClose }: { onClose: () => void }) {
+  const tr = useHomeStrings();
   const navigate = useNavigate();
   const folders = useStored(() => foldersRepo.list());
   const [mode, setMode] = useState<ImportMode>('pgn');
@@ -883,7 +875,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
     setSummary('');
     try {
       const pgn = mode === 'lichess' ? await fetchLichessStudy(url) : pgnText;
-      if (!pgn.trim()) throw new Error('PGN vide');
+      if (!pgn.trim()) throw new Error(tr.importModal.errEmptyPgn);
       const results =
         mode === 'lichess'
           ? [importLichessStudy(pgn, color)]
@@ -891,7 +883,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
       const valid = results.filter(r =>
         r.opening.lines.some(l => l.moves.length > 0),
       );
-      if (valid.length === 0) throw new Error('Aucune partie avec coups trouvée');
+      if (valid.length === 0) throw new Error(tr.importModal.errNoGames);
       if (valid.length === 1) {
         openingsRepo.save(valid[0].opening);
         onClose();
@@ -931,9 +923,10 @@ function ImportModal({ onClose }: { onClose: () => void }) {
     }
     setStatus('done');
     setSummary(
-      `${pendingResults.length} ouvertures importées${
-        folderId ? ` dans "${foldersRepo.get(folderId)?.name}"` : ''
-      }.`,
+      tr.importModal.imported(
+        pendingResults.length,
+        folderId ? foldersRepo.get(folderId)?.name : undefined,
+      ),
     );
   };
 
@@ -950,10 +943,11 @@ function ImportModal({ onClose }: { onClose: () => void }) {
 
   if (status === 'preview') {
     return (
-      <Modal open onClose={cancelPreview} title="Confirmer l'import">
+      <Modal open onClose={cancelPreview} title={tr.importModal.previewTitle}>
         <div className="space-y-4">
           <p className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-sm text-warning-text">
-            L'import va créer <strong>{pendingResults.length} nouvelles ouvertures</strong>.
+            {tr.importModal.willCreateLead}
+            <strong>{tr.importModal.willCreateCount(pendingResults.length)}</strong>.
           </p>
           <div className="max-h-48 overflow-y-auto rounded-md border border-line bg-field p-2 text-xs">
             <ul className="space-y-1">
@@ -970,14 +964,14 @@ function ImportModal({ onClose }: { onClose: () => void }) {
 
           <div className="space-y-2">
             <label className="block text-xs font-medium uppercase tracking-wider text-meta">
-              Regrouper dans un dossier
+              {tr.importModal.groupLabel}
             </label>
             <div className="grid grid-cols-3 gap-2">
               {(
                 [
-                  { id: 'new', label: 'Nouveau' },
-                  { id: 'existing', label: 'Existant' },
-                  { id: 'none', label: 'Aucun' },
+                  { id: 'new', label: tr.importModal.folderNew },
+                  { id: 'existing', label: tr.importModal.folderExisting },
+                  { id: 'none', label: tr.importModal.folderNone },
                 ] as const
               ).map(opt => (
                 <button
@@ -998,7 +992,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
               <input
                 value={newFolderName}
                 onChange={e => setNewFolderName(e.target.value)}
-                placeholder="Nom du dossier"
+                placeholder={tr.folders.namePlaceholder}
                 className="w-full rounded-md border border-line bg-field px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent-soft-border focus:outline-none"
               />
             )}
@@ -1018,21 +1012,21 @@ function ImportModal({ onClose }: { onClose: () => void }) {
           </div>
 
           <p className="text-xs text-meta">
-            Camp joué : {color === 'white' ? 'Blancs' : 'Noirs'}.
+            {tr.importModal.playedSide(color === 'white' ? tr.white : tr.black)}
           </p>
           <div className="flex justify-end gap-2 pt-2">
             <button
               onClick={cancelPreview}
               className="rounded-lg px-4 py-2 text-sm text-ink-soft hover:text-ink"
             >
-              Retour
+              {tr.importModal.back}
             </button>
             <button
               onClick={confirmImport}
               disabled={folderTarget === 'new' && newFolderName.trim().length === 0}
               className="rounded-lg btn-accent px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Confirmer
+              {tr.importModal.confirm}
             </button>
           </div>
         </div>
@@ -1041,14 +1035,14 @@ function ImportModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Modal open onClose={onClose} title="Importer une ouverture">
+    <Modal open onClose={onClose} title={tr.importModal.title}>
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-2">
           {(
             [
               { id: 'pgn', label: 'PGN' },
               { id: 'lichess', label: 'Lichess Study' },
-              { id: 'file', label: 'Fichier' },
+              { id: 'file', label: tr.importModal.modeFile },
             ] as const
           ).map(m => (
             <button
@@ -1069,7 +1063,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
           <textarea
             value={pgnText}
             onChange={e => setPgnText(e.target.value)}
-            placeholder="Colle ton PGN ici"
+            placeholder={tr.importModal.pgnPlaceholder}
             rows={8}
             className="w-full resize-none rounded-md border border-line bg-surface-high p-2 font-mono text-xs text-ink placeholder:text-ink-muted focus:border-accent-soft-border focus:outline-none"
           />
@@ -1084,7 +1078,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
               className="w-full rounded-md border border-line bg-surface-high px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent-soft-border focus:outline-none"
             />
             <p className="mt-1 text-xs text-meta">
-              Études publiques uniquement. Un chapitre = une ouverture.
+              {tr.importModal.lichessHint}
             </p>
           </div>
         )}
@@ -1102,7 +1096,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
 
         <div>
           <label className="block text-xs font-medium uppercase tracking-wider text-meta">
-            Camp joué
+            {tr.importModal.sideLabel}
           </label>
           <div className="mt-2 grid grid-cols-2 gap-2">
             {(['white', 'black'] as const).map(c => (
@@ -1115,7 +1109,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
                     : 'border-line-strong text-ink-soft hover:bg-track hover:text-ink'
                 }`}
               >
-                {c === 'white' ? 'Blancs' : 'Noirs'}
+                {c === 'white' ? tr.white : tr.black}
               </button>
             ))}
           </div>
@@ -1137,7 +1131,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
             onClick={onClose}
             className="rounded-lg px-4 py-2 text-sm text-ink-soft hover:text-ink"
           >
-            {status === 'done' ? 'Fermer' : 'Annuler'}
+            {status === 'done' ? tr.importModal.close : tr.importModal.cancel}
           </button>
           {status !== 'done' && (
             <button
@@ -1145,7 +1139,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
               disabled={!canSubmit}
               className="rounded-lg btn-accent px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {status === 'loading' ? 'Import…' : 'Importer'}
+              {status === 'loading' ? tr.importModal.importing : tr.importModal.submit}
             </button>
           )}
         </div>

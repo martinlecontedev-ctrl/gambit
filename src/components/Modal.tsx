@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { useCommon } from '../i18n/common';
 
 /**
  * Minimal overlay dialog: backdrop click and Escape both close it. Inner
@@ -19,6 +20,7 @@ export function Modal({
   /** Content-heavy dialogs (move lists) get a wider panel. */
   wide?: boolean;
 }) {
+  const tr = useCommon();
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -44,7 +46,7 @@ export function Modal({
             <h2 className="text-lg font-bold tracking-tight text-ink">{title}</h2>
             <button
               onClick={onClose}
-              aria-label="Fermer"
+              aria-label={tr.close}
               className="text-ink-muted transition hover:text-ink"
             >
               ✕

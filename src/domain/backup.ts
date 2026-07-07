@@ -41,9 +41,12 @@ export function buildBackup(data: BackupData, now: number): Backup {
   };
 }
 
+/** Error CODES, not messages — the UI translates them (i18n/menu.ts). */
+export type BackupParseError = 'invalid-json' | 'not-gambit' | 'newer-version' | 'malformed';
+
 export type ParseBackupResult =
   | { ok: true; backup: Backup }
-  | { ok: false; error: string };
+  | { ok: false; error: BackupParseError };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -55,23 +58,20 @@ const everyHasStringId = (arr: unknown[]): boolean =>
  * Validate a candidate backup file. Checks are structural, not exhaustive:
  * entries only need the fields the repos key on — openings then go through
  * the regular read migration, so older shapes inside a valid envelope load
- * fine. Errors are user-facing (French).
+ * fine.
  */
 export function parseBackup(json: string): ParseBackupResult {
   let raw: unknown;
   try {
     raw = JSON.parse(json);
   } catch {
-    return { ok: false, error: 'Fichier illisible (JSON invalide).' };
+    return { ok: false, error: 'invalid-json' };
   }
   if (!isRecord(raw) || raw.app !== 'gambit' || typeof raw.schemaVersion !== 'number') {
-    return { ok: false, error: 'Ce fichier n’est pas une sauvegarde Gambit.' };
+    return { ok: false, error: 'not-gambit' };
   }
   if (raw.schemaVersion > BACKUP_SCHEMA_VERSION) {
-    return {
-      ok: false,
-      error: 'Sauvegarde issue d’une version plus récente de Gambit — mets l’application à jour avant de restaurer.',
-    };
+    return { ok: false, error: 'newer-version' };
   }
   const { openings, cards, reviews, folders, studySync } = raw;
   if (
@@ -81,10 +81,10 @@ export function parseBackup(json: string): ParseBackupResult {
     !Array.isArray(folders) ||
     !isRecord(studySync)
   ) {
-    return { ok: false, error: 'Sauvegarde incomplète ou corrompue.' };
+    return { ok: false, error: 'malformed' };
   }
   if (!everyHasStringId(openings) || !everyHasStringId(cards) || !everyHasStringId(folders)) {
-    return { ok: false, error: 'Sauvegarde incomplète ou corrompue.' };
+    return { ok: false, error: 'malformed' };
   }
   return {
     ok: true,
@@ -101,15 +101,17 @@ export function parseBackup(json: string): ParseBackupResult {
   };
 }
 
-/** One-line human summary for confirm dialogs: "3 ouvertures, 128 cartes…". */
-export function backupSummary(d: BackupData): string {
-  // French pluralization: zero takes the singular (« 0 ouverture »).
-  const n = (count: number, singular: string, plural = `${singular}s`) =>
-    `${count} ${count > 1 ? plural : singular}`;
-  return [
-    n(d.openings.length, 'ouverture'),
-    n(d.cards.length, 'carte'),
-    n(d.reviews.length, 'révision'),
-    n(d.folders.length, 'dossier'),
-  ].join(', ');
+/** Raw counts for the confirm dialog — the UI words them (i18n/menu.ts). */
+export function backupCounts(d: BackupData): {
+  openings: number;
+  cards: number;
+  reviews: number;
+  folders: number;
+} {
+  return {
+    openings: d.openings.length,
+    cards: d.cards.length,
+    reviews: d.reviews.length,
+    folders: d.folders.length,
+  };
 }

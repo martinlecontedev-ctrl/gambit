@@ -1,5 +1,6 @@
-import { NAG_BADGE_BG, NAG_LABELS, NAG_SYMBOLS } from '../domain/nag';
+import { NAG_BADGE_BG, NAG_SYMBOLS } from '../domain/nag';
 import type { Color, Nag } from '../domain/types';
+import { useCommon } from '../i18n/common';
 
 /**
  * Floating pill rendered on top of a single board square, anchored in the
@@ -18,6 +19,7 @@ export function NagSquareBadge({
   /** Which side is at the bottom of the board. */
   orientation: Color;
 }) {
+  const { nagLabels } = useCommon();
   if (square.length < 2) return null;
   const file = square.charCodeAt(0) - 'a'.charCodeAt(0);
   const rank = parseInt(square[1], 10) - 1;
@@ -39,7 +41,7 @@ export function NagSquareBadge({
     >
       <span
         className={`absolute right-1 top-1 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded px-1 text-[11px] font-bold leading-none text-surface-high shadow-md ${NAG_BADGE_BG[nag]}`}
-        title={NAG_LABELS[nag]}
+        title={nagLabels[nag]}
       >
         {NAG_SYMBOLS[nag]}
       </span>

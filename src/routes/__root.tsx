@@ -1,10 +1,12 @@
 import { createRootRoute, Link, Outlet, useLocation } from '@tanstack/react-router';
 import { UserMenu } from '../components/UserMenu';
+import { useCommon } from '../i18n/common';
 
 export const Route = createRootRoute({ component: RootLayout });
 
 function RootLayout() {
   const { pathname } = useLocation();
+  const tr = useCommon();
   // OUVERTURES covers home + editor + review; the other tabs own their route.
   const active = pathname.startsWith('/guide')
     ? 'guide'
@@ -33,19 +35,19 @@ function RootLayout() {
                 to="/"
                 className={`transition-colors hover:text-on-ink ${active === 'openings' ? 'text-on-ink' : 'text-on-idle'}`}
               >
-                OUVERTURES
+                {tr.nav.openings}
               </Link>
               <Link
                 to="/lichess"
                 className={`transition-colors hover:text-on-ink ${active === 'lichess' ? 'text-on-ink' : 'text-on-idle'}`}
               >
-                LICHESS
+                {tr.nav.lichess}
               </Link>
               <Link
                 to="/guide"
                 className={`transition-colors hover:text-on-ink ${active === 'guide' ? 'text-on-ink' : 'text-on-idle'}`}
               >
-                GUIDE
+                {tr.nav.guide}
               </Link>
             </nav>
             <UserMenu />

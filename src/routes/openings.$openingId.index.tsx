@@ -37,7 +37,9 @@ import {
 import { withChapterReview } from '../domain/cards';
 import { getAccount, subscribeAccount } from '../domain/lichessAuth';
 import { fetchRecentGamesCached, type RecentGame } from '../domain/lichessGames';
-import { NAG_COLORS, NAG_LABELS, NAG_SYMBOLS } from '../domain/nag';
+import { NAG_COLORS, NAG_SYMBOLS } from '../domain/nag';
+import { useCommon } from '../i18n/common';
+import { useOverviewStrings } from '../i18n/overview';
 import { exportToPgn } from '../domain/pgn';
 import { segmentLines } from '../domain/tree';
 import type { Annotation, Chapter, Line, Opening } from '../domain/types';
@@ -63,6 +65,8 @@ function OverviewOpening() {
  */
 function OverviewInner({ opening }: { opening: Opening }) {
   const navigate = useNavigate();
+  const tr = useOverviewStrings();
+  const common = useCommon();
   const {
     line,
     cursorIdx,
@@ -132,19 +136,11 @@ function OverviewInner({ opening }: { opening: Opening }) {
     const latest = openingsRepo.get(opening.id);
     if (!latest) return;
     if (latest.chapters.length <= 1) {
-      alert("Impossible de supprimer le dernier chapitre d'une ouverture.");
+      alert(tr.cannotDeleteLastChapter);
       return;
     }
     const linesInChapter = latest.lines.filter(l => l.chapterId === chapter.id);
-    const message =
-      `Supprimer le chapitre "${chapter.name}" ?` +
-      (linesInChapter.length > 0
-        ? `\n\n⚠️  ${linesInChapter.length} ligne${
-            linesInChapter.length > 1 ? 's' : ''
-          } et toutes les cartes de révision liées seront supprimées.`
-        : '') +
-      `\n\nCette action est définitive.`;
-    if (!confirm(message)) return;
+    if (!confirm(tr.deleteChapterConfirm(chapter.name, linesInChapter.length))) return;
     openingsRepo.save({
       ...latest,
       chapters: latest.chapters.filter(c => c.id !== chapter.id),
@@ -178,7 +174,7 @@ function OverviewInner({ opening }: { opening: Opening }) {
     };
     const root: Line = {
       id: crypto.randomUUID(),
-      name: 'Ligne principale',
+      name: tr.mainLine,
       chapterId: chapter.id,
       parentLineId: undefined,
       moves: [],
@@ -194,7 +190,7 @@ function OverviewInner({ opening }: { opening: Opening }) {
   };
 
   const removeOpening = () => {
-    if (!confirm('Supprimer cette ouverture ?')) return;
+    if (!confirm(tr.deleteOpeningConfirm)) return;
     openingsRepo.delete(opening.id);
     navigate({ to: '/' });
   };
@@ -231,22 +227,21 @@ function OverviewInner({ opening }: { opening: Opening }) {
           to="/"
           className="inline-flex items-center gap-2 text-[14.5px] font-semibold text-on-muted transition hover:text-on-ink"
         >
-          ← Retour
+          {common.back}
         </Link>
         <div className="flex items-baseline gap-5">
           <h1 className="min-w-0 truncate text-[28px] font-extrabold tracking-[-0.02em] text-on-ink">
             {opening.name}
           </h1>
           <p className="shrink-0 whitespace-nowrap text-sm text-on-muted">
-            {opening.color === 'white' ? 'Blancs' : 'Noirs'} ·{' '}
-            {opening.lines.length} ligne{opening.lines.length > 1 ? 's' : ''}
+            {tr.subtitle(opening.color, opening.lines.length)}
           </p>
         </div>
       </div>
       <div className="grid grid-cols-[240px_1fr_350px] items-start gap-8">
       <aside className="flex flex-col gap-2">
         <h2 className="mx-1 mb-3.5 text-[11.5px] font-bold uppercase tracking-[0.16em] text-on-muted">
-          Chapitres
+          {tr.chapters}
         </h2>
         <ul className="flex flex-col gap-1.5">
           {sortedChapters.map(c => (
@@ -290,7 +285,7 @@ function OverviewInner({ opening }: { opening: Opening }) {
           onClick={() => setChapterModalOpen(true)}
           className="mt-1 w-full rounded-xl border border-dashed border-on-dash px-3.5 py-3 text-[13.5px] font-semibold text-on-muted transition hover:bg-ground-overlay hover:text-on-ink"
         >
-          + Nouveau chapitre
+          {tr.newChapter}
         </button>
         <div className="mt-2">
           <AdherenceCard opening={opening} />
@@ -305,13 +300,13 @@ function OverviewInner({ opening }: { opening: Opening }) {
               onClick={removeOpening}
               className="h-10 rounded-[10px] border border-danger-border bg-danger-soft px-3.75 text-[13.5px] font-semibold text-danger-text transition hover:brightness-[0.98]"
             >
-              Supprimer
+              {tr.deleteBtn}
             </button>
             <button
               onClick={() => setExportOpen(true)}
               className="h-10 rounded-[10px] border border-chip-border bg-chip px-3.75 text-[13.5px] font-semibold text-chip-text transition hover:border-chip-hover"
             >
-              Exporter
+              {tr.exportBtn}
             </button>
           </div>
           <div className="flex gap-2.5">
@@ -321,7 +316,7 @@ function OverviewInner({ opening }: { opening: Opening }) {
               search={line ? { line: line.id, ply: cursorIdx } : {}}
               className="flex h-10 items-center rounded-[10px] border border-chip-border bg-chip px-3.75 text-[13.5px] font-semibold text-chip-text transition hover:border-chip-hover"
             >
-              Éditer
+              {tr.editBtn}
             </Link>
             <Link
               to="/openings/$openingId/study"
@@ -329,7 +324,7 @@ function OverviewInner({ opening }: { opening: Opening }) {
               search={{ program: false }}
               className="btn-accent flex h-10 items-center rounded-[10px] px-3.75 text-[13.5px] font-semibold"
             >
-              Réviser
+              {tr.reviewBtn}
             </Link>
           </div>
         </div>
@@ -369,9 +364,9 @@ function OverviewInner({ opening }: { opening: Opening }) {
           <div className="px-4 pt-4">
             <div className="mb-3 flex items-baseline justify-between gap-2">
               <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-                Ligne en cours
+                {tr.currentLine}
               </span>
-              <span className="text-[11px] text-ink-muted">(chip) = bascule</span>
+              <span className="text-[11px] text-ink-muted">{tr.chipHint}</span>
             </div>
           </div>
           <div className="scoresheet-scroll max-h-75 overflow-y-auto px-4">
@@ -389,7 +384,7 @@ function OverviewInner({ opening }: { opening: Opening }) {
               />
             ) : (
               <p className="pb-3 text-sm italic text-meta">
-                Ouverture vide. Passe en édition pour jouer des coups.
+                {tr.emptyOpening}
               </p>
             )}
           </div>
@@ -431,20 +426,22 @@ function OverviewInner({ opening }: { opening: Opening }) {
  * and comment stored at the current position, nothing when there is none
  * (saved arrows already render on the board). */
 function AnnotationReadonly({ annotation }: { annotation: Annotation | undefined }) {
+  const tr = useOverviewStrings();
+  const common = useCommon();
   const nag = annotation?.nag;
   const comment = annotation?.comment?.trim();
   if (nag === undefined && !comment) return null;
   return (
     <div className="rounded-[14px] border border-line bg-surface p-4 shadow-resting">
       <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-        Annotation
+        {tr.annotationTitle}
       </div>
       {nag !== undefined && (
         <div className={`mb-2 flex items-baseline gap-2 ${comment ? '' : 'mb-0'}`}>
           <span className={`text-[15px] font-bold leading-none ${NAG_COLORS[nag]}`}>
             {NAG_SYMBOLS[nag]}
           </span>
-          <span className="text-[12.5px] text-ink-soft">{NAG_LABELS[nag]}</span>
+          <span className="text-[12.5px] text-ink-soft">{common.nagLabels[nag]}</span>
         </div>
       )}
       {comment && (
@@ -462,6 +459,7 @@ function AnnotationReadonly({ annotation }: { annotation: Annotation | undefined
  * Silent unless connected and at least one game is attributed here.
  */
 function AdherenceCard({ opening }: { opening: Opening }) {
+  const tr = useOverviewStrings();
   const account = useSyncExternalStore(subscribeAccount, getAccount, getAccount);
   const allOpenings = useStored(() => openingsRepo.list());
   const cards = useStored(() => cardsRepo.list());
@@ -526,37 +524,34 @@ function AdherenceCard({ opening }: { opening: Opening }) {
   const leakTitle = (leak: RefinedLeak): string => {
     const head = `${moveNumberLabel(leak.ply)} ${leak.expectedSans.join(' / ')}`;
     if (leak.kind === 'alternative') {
-      return `${head} — tu joues aussi ${leak.openingName} ici (${leak.missSan} ×${leak.missTopCount}) : autre ouverture, hors calcul`;
+      return tr.leakAlternative(head, leak.openingName, leak.missSan, leak.missTopCount);
     }
     if (leak.kind === 'disagreement') {
-      return `${head} — tu joues ${leak.missSan} systématiquement (${leak.missCount}×) : révise, ou adapte le répertoire`;
+      return tr.leakDisagreement(head, leak.missSan, leak.missCount);
     }
-    return `${head} — joué ${leak.missSan} ${leak.missCount}× sur ${leak.seen} passage${
-      leak.seen > 1 ? 's' : ''
-    }${leak.followed > 0 ? ' (trou de mémoire)' : ''}`;
+    return tr.leakLapse(head, leak.missSan, leak.missCount, leak.seen, leak.followed > 0);
   };
 
   return (
     <div className="rounded-[14px] border border-line bg-surface p-3.5 shadow-resting">
       <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-        Fidélité · Lichess
+        {tr.adherenceTitle}
       </div>
       <div className="mt-1.5 flex items-baseline gap-2">
         <span className={`text-[26px] font-extrabold leading-none tnum ${tone}`}>
           {pct}%
         </span>
         <span className="text-[11.5px] text-meta tnum">
-          {refined.followed}/{refined.countedDecisions} suivis
+          {tr.followedRatio(refined.followed, refined.countedDecisions)}
         </span>
       </div>
       <p className="mt-1 text-[11.5px] text-meta tnum">
-        {refined.games} partie{refined.games > 1 ? 's' : ''}
-        {refined.alternativeMisses > 0 &&
-          ` · ${refined.alternativeMisses} coups exclus (autre ouverture)`}
+        {tr.gamesCount(refined.games)}
+        {refined.alternativeMisses > 0 && tr.excludedMoves(refined.alternativeMisses)}
       </p>
       {refined.leaks.length === 0 ? (
         <p className="mt-2.5 border-t border-line pt-2.5 text-[12px] text-success">
-          Aucun coup manqué — la théorie tient.
+          {tr.noLeaks}
         </p>
       ) : (
         <ul className="mt-2.5 space-y-1.5 border-t border-line pt-2.5">
@@ -580,17 +575,17 @@ function AdherenceCard({ opening }: { opening: Opening }) {
               {leak.kind === 'alternative' ? (
                 <button
                   onClick={() => navigate({ to: '/lichess' })}
-                  title="Voir tes ouvertures jouées — et créer son répertoire si tu veux la driller"
+                  title={tr.toLichessTitle}
                   className="shrink-0 rounded-full border border-chip-border bg-chip px-2 py-0.5 text-[11px] font-semibold text-chip-text transition hover:border-chip-hover"
                 >
-                  → Lichess
+                  {tr.toLichess}
                 </button>
               ) : leakReviewedSince(leak, cards, reviews) ? (
                 <span
-                  title="Bon coup joué en révision depuis le dernier raté en partie — se rouvrira si une nouvelle partie le rate encore"
+                  title={tr.reviewedTitle}
                   className="shrink-0 rounded-full border border-line bg-field px-2 py-0.5 text-[11px] font-semibold text-success"
                 >
-                  Révisé ✓
+                  {tr.reviewedBadge}
                 </span>
               ) : (
                 <button
@@ -603,7 +598,7 @@ function AdherenceCard({ opening }: { opening: Opening }) {
                   }
                   className="shrink-0 rounded-full border border-accent-soft-border bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent-soft-text transition hover:brightness-[0.97]"
                 >
-                  Réviser
+                  {tr.reviewBtn}
                 </button>
               )}
             </li>
@@ -615,7 +610,7 @@ function AdherenceCard({ opening }: { opening: Opening }) {
           onClick={() => setExpanded(e => !e)}
           className="mt-2 text-[11.5px] font-semibold text-ink-muted transition hover:text-ink"
         >
-          {expanded ? 'Réduire' : `+${hidden} autre${hidden > 1 ? 's' : ''}`}
+          {expanded ? tr.collapse : tr.moreLeaks(hidden)}
         </button>
       )}
     </div>
@@ -653,6 +648,7 @@ function ChapterItem({
   onRenameCancel: () => void;
   onDelete: () => void;
 }) {
+  const tr = useOverviewStrings();
   return (
     <div
       className={`group relative rounded-xl border transition ${
@@ -690,7 +686,7 @@ function ChapterItem({
               className={`shrink-0 text-[13px] font-bold leading-none ${
                 active ? 'text-accent' : 'text-accent-ground'
               }`}
-              title="Révision limitée à une fenêtre de coups"
+              title={tr.customRangeBadgeTitle}
             >
               ◎
             </span>
@@ -711,7 +707,7 @@ function ChapterItem({
               e.stopPropagation();
               onDefineReview();
             }}
-            title="Définir la révision (fenêtre de coups à driller)"
+            title={tr.defineReviewTitle}
             className="rounded p-1 text-xs text-ink-soft transition hover:bg-track hover:text-ink"
           >
             ◎
@@ -721,7 +717,7 @@ function ChapterItem({
               e.stopPropagation();
               onRenameStart();
             }}
-            title="Renommer"
+            title={tr.renameTitle}
             className="rounded p-1 text-xs text-ink-soft transition hover:bg-track hover:text-ink"
           >
             ✎
@@ -732,7 +728,7 @@ function ChapterItem({
                 e.stopPropagation();
                 onDelete();
               }}
-              title="Supprimer le chapitre"
+              title={tr.deleteChapterTitle}
               className="rounded p-1 text-xs text-ink-soft transition hover:bg-danger-soft hover:text-danger-text"
             >
               ✕
@@ -773,6 +769,8 @@ function ReviewRangeModal({
   onSave: (ranges: Map<string, { start: number; end?: number }[] | undefined>) => void;
   onClose: () => void;
 }) {
+  const tr = useOverviewStrings();
+  const common = useCommon();
   const startFen = chapter.startFen ?? START_FEN;
   const lines = useMemo(
     () => opening.lines.filter(l => l.chapterId === chapter.id && l.moves.length > 0),
@@ -891,7 +889,7 @@ function ReviewRangeModal({
   const segLabel = (segIdx: number): string => {
     const seg = segments[segIdx];
     if (seg.start === 0 && topLevelCount === 1) {
-      return segments.length === 1 ? 'Ligne principale' : 'Tronc commun';
+      return segments.length === 1 ? tr.mainLine : tr.sharedTrunk;
     }
     return `${plyLabel(seg.start)} ${sansBySegment[segIdx][0] ?? ''}`;
   };
@@ -937,20 +935,12 @@ function ReviewRangeModal({
   };
 
   return (
-    <Modal open wide onClose={onClose} title={`Définir la révision — ${chapter.name}`}>
+    <Modal open wide onClose={onClose} title={tr.rangeModalTitle(chapter.name)}>
       <div className="space-y-4">
-        <p className="text-xs text-meta">
-          Le tronc commun regroupe les coups partagés par toutes les variantes ;
-          chaque branche se règle à partir de sa bifurcation. Clique le premier
-          puis le dernier coup à réviser dans chaque bloc. Hors fenêtre, rien
-          n'est dû ni compté dans la maîtrise — le progrès des cartes est
-          conservé si tu réélargis.
-        </p>
+        <p className="text-xs text-meta">{tr.rangeIntro}</p>
 
         {segments.length === 0 ? (
-          <p className="text-sm italic text-meta">
-            Ce chapitre ne contient encore aucun coup.
-          </p>
+          <p className="text-sm italic text-meta">{tr.emptyChapter}</p>
         ) : (
           <div className="max-h-96 space-y-3 overflow-y-auto pr-1">
             {segments.map((seg, segIdx) => {
@@ -975,23 +965,21 @@ function ReviewRangeModal({
                     </span>
                     <span className="flex shrink-0 items-center gap-2.5">
                       <span className="text-[11.5px] text-meta tnum">
-                        {drilled > 0
-                          ? `${drilled} coup${drilled > 1 ? 's' : ''} à driller`
-                          : 'rien à driller'}
+                        {drilled > 0 ? tr.drilledCount(drilled) : tr.nothingToDrill}
                       </span>
                       <button
                         onClick={() => setWholeSegment(segIdx)}
                         disabled={whole}
                         className="text-[11.5px] font-semibold text-ink-muted transition hover:text-ink disabled:opacity-40"
                       >
-                        Tout
+                        {tr.all}
                       </button>
                       <button
                         onClick={() => setEmptySegment(segIdx)}
                         disabled={empty}
                         className="text-[11.5px] font-semibold text-ink-muted transition hover:text-ink disabled:opacity-40"
                       >
-                        Aucun
+                        {tr.none}
                       </button>
                     </span>
                   </div>
@@ -1032,21 +1020,20 @@ function ReviewRangeModal({
               totalDrilled > 0 ? 'text-meta' : 'font-semibold text-warning-text'
             }`}
           >
-            {totalDrilled} coup{totalDrilled > 1 ? 's' : ''} à driller dans ce
-            chapitre
+            {tr.totalDrilled(totalDrilled)}
           </span>
           <span className="flex gap-2">
             <button
               onClick={onClose}
               className="rounded-lg px-4 py-2 text-sm text-ink-soft hover:text-ink"
             >
-              Annuler
+              {common.cancel}
             </button>
             <button
               onClick={submit}
               className="btn-accent rounded-btn px-4 py-2 text-sm font-semibold"
             >
-              Enregistrer
+              {tr.save}
             </button>
           </span>
         </div>
@@ -1062,6 +1049,8 @@ function ExportPgnModal({
   onClose: () => void;
   opening: Opening;
 }) {
+  const tr = useOverviewStrings();
+  const common = useCommon();
   const pgn = useMemo(() => exportToPgn(opening), [opening]);
   const [copied, setCopied] = useState(false);
 
@@ -1076,12 +1065,9 @@ function ExportPgnModal({
   };
 
   return (
-    <Modal open onClose={onClose} title="Exporter en PGN">
+    <Modal open onClose={onClose} title={tr.exportModalTitle}>
       <div className="space-y-3">
-        <p className="text-xs text-meta">
-          Compatible Lichess Study, ChessBase, Chessable. Un chapitre = une
-          partie PGN. Inclut variantes, commentaires, NAGs et flèches.
-        </p>
+        <p className="text-xs text-meta">{tr.exportIntro}</p>
         <textarea
           readOnly
           value={pgn}
@@ -1094,13 +1080,13 @@ function ExportPgnModal({
             onClick={onClose}
             className="rounded-lg px-4 py-2 text-sm text-ink-soft hover:text-ink"
           >
-            Fermer
+            {common.close}
           </button>
           <button
             onClick={copy}
             className="btn-accent rounded-btn px-4 py-2 text-sm font-semibold"
           >
-            {copied ? 'Copié ✓' : 'Copier'}
+            {copied ? tr.copied : tr.copy}
           </button>
         </div>
       </div>

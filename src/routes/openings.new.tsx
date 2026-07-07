@@ -1,11 +1,13 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
 import type { Color, Opening } from '../domain/types';
+import { useHomeStrings } from '../i18n/home';
 import { openingsRepo } from '../storage/repository';
 
 export const Route = createFileRoute('/openings/new')({ component: NewOpening });
 
 function NewOpening() {
+  const tr = useHomeStrings();
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [color, setColor] = useState<Color>('white');
@@ -15,7 +17,7 @@ function NewOpening() {
     const trimmed = name.trim();
     if (!trimmed) return;
     if (openingsRepo.list().some(o => o.name === trimmed)) {
-      alert(`Une ouverture nommée « ${trimmed} » existe déjà.`);
+      alert(tr.newOpening.duplicate(trimmed));
       return;
     }
     const id = crypto.randomUUID();
@@ -25,9 +27,9 @@ function NewOpening() {
       id,
       name: trimmed,
       color,
-      chapters: [{ id: chapterId, name: 'Principal', order: 0 }],
+      chapters: [{ id: chapterId, name: tr.newOpening.defaultChapter, order: 0 }],
       lines: [
-        { id: crypto.randomUUID(), name: 'Ligne 1', chapterId, moves: [] },
+        { id: crypto.randomUUID(), name: tr.newOpening.defaultLine, chapterId, moves: [] },
       ],
       createdAt: now,
       updatedAt: now,
@@ -39,16 +41,18 @@ function NewOpening() {
   return (
     <main className="mx-auto max-w-md px-10 pt-12 pb-20">
       <h1 className="text-[32px] font-extrabold tracking-[-0.02em] text-on-ink">
-        Nouvelle ouverture
+        {tr.newOpening.title}
       </h1>
       <form onSubmit={submit} className="mt-8 space-y-6">
         <div>
-          <label className="block text-sm font-semibold text-on-body">Nom</label>
+          <label className="block text-sm font-semibold text-on-body">
+            {tr.newOpening.nameLabel}
+          </label>
           <input
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="Sicilienne — Najdorf"
+            placeholder={tr.newOpening.namePlaceholder}
             autoFocus
             className="mt-2 w-full rounded-[10px] border border-line-strong bg-field px-3 py-2.5 text-ink placeholder:text-ink-muted focus:border-accent-soft-border focus:outline-none"
           />
@@ -56,7 +60,7 @@ function NewOpening() {
 
         <div>
           <label className="block text-sm font-semibold text-on-body">
-            Couleur jouée
+            {tr.newOpening.colorLabel}
           </label>
           <div className="mt-2 grid grid-cols-2 gap-2.5">
             {(['white', 'black'] as const).map(c => (
@@ -70,7 +74,7 @@ function NewOpening() {
                     : 'border-ground-line text-seg-off hover:bg-ground-overlay'
                 }`}
               >
-                {c === 'white' ? 'Blancs' : 'Noirs'}
+                {c === 'white' ? tr.white : tr.black}
               </button>
             ))}
           </div>
@@ -82,14 +86,14 @@ function NewOpening() {
             onClick={() => navigate({ to: '/' })}
             className="rounded-btn px-4 py-2.5 text-sm font-semibold text-on-muted transition hover:text-on-ink"
           >
-            Annuler
+            {tr.newOpening.cancel}
           </button>
           <button
             type="submit"
             disabled={!name.trim()}
             className="btn-accent rounded-btn px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Créer
+            {tr.newOpening.create}
           </button>
         </div>
       </form>

@@ -2,12 +2,13 @@ import { createElement } from 'react';
 import type { Key } from '@lichess-org/chessground/types';
 import type { PromotionRole } from '../domain/chess';
 import type { Color } from '../domain/types';
+import { useCommon } from '../i18n/common';
 
-const CHOICES: { role: PromotionRole; piece: string; label: string }[] = [
-  { role: 'q', piece: 'queen', label: 'Dame' },
-  { role: 'n', piece: 'knight', label: 'Cavalier' },
-  { role: 'r', piece: 'rook', label: 'Tour' },
-  { role: 'b', piece: 'bishop', label: 'Fou' },
+const CHOICES: { role: PromotionRole; piece: string }[] = [
+  { role: 'q', piece: 'queen' },
+  { role: 'n', piece: 'knight' },
+  { role: 'r', piece: 'rook' },
+  { role: 'b', piece: 'bishop' },
 ];
 
 /**
@@ -33,6 +34,7 @@ export function PromotionChooser({
   onPick: (role: PromotionRole) => void;
   onCancel: () => void;
 }) {
+  const tr = useCommon();
   const file = dest.charCodeAt(0) - 97;
   const col = orientation === 'white' ? file : 7 - file;
   // Choices stack from the promotion square inward: top-down when the pawn
@@ -51,8 +53,8 @@ export function PromotionChooser({
         <button
           key={c.role}
           onClick={() => onPick(c.role)}
-          title={c.label}
-          aria-label={`Promouvoir en ${c.label.toLowerCase()}`}
+          title={tr.promotion.pieces[c.role]}
+          aria-label={tr.promotion.promoteTo(tr.promotion.pieces[c.role])}
           className="flex items-center justify-center rounded-full border border-line-strong bg-surface shadow-card transition hover:border-accent"
           style={{
             position: 'absolute',

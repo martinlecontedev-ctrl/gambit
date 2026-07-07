@@ -26,7 +26,9 @@ import {
   type PromotionRole,
 } from '../domain/chess';
 import { engine, type EngineResult } from '../domain/engine';
-import { NAG_COLORS, NAG_LABELS, NAG_ORDER, NAG_SYMBOLS } from '../domain/nag';
+import { useCommon } from '../i18n/common';
+import { useEditorStrings } from '../i18n/editor';
+import { NAG_COLORS, NAG_ORDER, NAG_SYMBOLS } from '../domain/nag';
 import { recognizeOpening } from '../domain/openings-db';
 import { parentForNewVariant } from '../domain/tree';
 import type {
@@ -91,6 +93,8 @@ function EditOpeningInner({
   initialLineId?: string;
   initialPly?: number;
 }) {
+  const tr = useEditorStrings();
+  const c = useCommon();
   // The editor works on an in-memory draft: nothing touches storage until
   // "Enregistrer". The ref is updated synchronously by every mutation, so
   // two handlers firing on the same tick (arrow drawn → move played) never
@@ -114,9 +118,7 @@ function EditOpeningInner({
 
   // Block in-app navigation (and tab close via beforeunload) while unsaved.
   useBlocker({
-    shouldBlockFn: () =>
-      dirtyRef.current &&
-      !confirm('Modifications non enregistrées. Quitter sans enregistrer ?'),
+    shouldBlockFn: () => dirtyRef.current && !confirm(tr.unsavedConfirm),
     enableBeforeUnload: () => dirtyRef.current,
   });
 
@@ -402,7 +404,7 @@ function EditOpeningInner({
     );
     const variant: Line = {
       id: crypto.randomUUID(),
-      name: 'Variante',
+      name: tr.variantName,
       chapterId: latestLine.chapterId,
       parentLineId: parent.id,
       moves: [...prefix, uci],
@@ -436,7 +438,7 @@ function EditOpeningInner({
     };
     const newRoot: Line = {
       id: crypto.randomUUID(),
-      name: 'Ligne principale',
+      name: tr.mainLineName,
       chapterId: chapter.id,
       parentLineId: undefined,
       moves: [...chapterModal.seedMoves],
@@ -548,7 +550,7 @@ function EditOpeningInner({
           params={{ openingId: opening.id }}
           className="inline-flex items-center gap-2 text-[14.5px] font-semibold text-on-muted transition hover:text-on-ink"
         >
-          ← Retour
+          {c.back}
         </Link>
         <div className="flex min-w-0 items-center gap-5">
           <h1 className="min-w-0 truncate text-[28px] font-extrabold tracking-[-0.02em] text-on-ink">
@@ -558,7 +560,7 @@ function EditOpeningInner({
             <select
               value={currentChapter?.id ?? ''}
               onChange={e => switchToChapter(e.target.value)}
-              title="Changer de chapitre"
+              title={tr.switchChapter}
               className="h-9 max-w-60 shrink-0 truncate rounded-[10px] border border-line-strong bg-field px-2.5 text-[13px] font-semibold text-ink focus:border-accent-soft-border focus:outline-none"
             >
               {sortedChapters.map(c => (
@@ -572,7 +574,7 @@ function EditOpeningInner({
         <div className="flex items-center justify-end gap-3">
           {dirty && (
             <span className="whitespace-nowrap rounded-full border border-warning-border bg-warning-soft px-2.5 py-1 text-[12px] font-semibold text-warning-text">
-              Non enregistré
+              {tr.unsaved}
             </span>
           )}
           <button
@@ -584,7 +586,7 @@ function EditOpeningInner({
                 : 'flex h-10 cursor-default items-center rounded-[10px] border border-ground-line bg-ground-overlay px-5 text-[13.5px] font-semibold text-on-muted'
             }
           >
-            {dirty ? 'Enregistrer' : 'Enregistré ✓'}
+            {dirty ? tr.save : tr.saved}
           </button>
         </div>
       </div>
@@ -654,9 +656,9 @@ function EditOpeningInner({
           <div className="px-4 pt-4">
             <div className="mb-3 flex items-baseline justify-between gap-2">
               <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-                Ligne en cours
+                {tr.currentLine}
               </span>
-              <span className="text-[11px] text-ink-muted">(chip) = bascule</span>
+              <span className="text-[11px] text-ink-muted">{tr.chipHint}</span>
             </div>
           </div>
           <div className="scoresheet-scroll max-h-75 overflow-y-auto px-4">
@@ -673,31 +675,25 @@ function EditOpeningInner({
                 onSwitchLine={selectLine}
               />
             ) : (
-              <p className="pb-3 text-sm italic text-meta">
-                Ouverture vide. Jouez un coup pour commencer.
-              </p>
+              <p className="pb-3 text-sm italic text-meta">{tr.emptyOpening}</p>
             )}
           </div>
           <div className="flex items-center justify-between gap-2.5 border-t border-line bg-field px-4 py-3">
             <button
               onClick={truncateAtCursor}
               disabled={!line || cursorIdx >= line.moves.length}
-              title="Supprime tous les coups après la position courante dans la ligne en cours"
+              title={tr.deleteRestTitle}
               className="text-[13px] font-semibold text-warning-text transition hover:brightness-90 disabled:opacity-30"
             >
-              Supprimer la suite
+              {tr.deleteRest}
             </button>
             <button
               onClick={() => line && deleteLine(line.id)}
               disabled={!canDeleteVariant}
-              title={
-                canDeleteVariant
-                  ? 'Supprime cette variante (ses enfants sont rattachés à son parent)'
-                  : 'La ligne racine ne peut pas être supprimée'
-              }
+              title={canDeleteVariant ? tr.deleteVariantTitle : tr.rootUndeletable}
               className="text-[13px] font-semibold text-warning-text transition hover:brightness-90 disabled:opacity-30"
             >
-              Supprimer la variante
+              {tr.deleteVariant}
             </button>
           </div>
         </div>
@@ -723,7 +719,7 @@ function EditOpeningInner({
 }
 
 /**
- * Vertical white-vs-black bar à la chess.com / lichess. White fills from the
+ * Vertical white-vs-black bar in the style of chess.com / lichess. White fills from the
  * bottom; the boundary moves smoothly as the engine eval changes. Keeps the
  * last known share when navigating to a position the engine hasn't analyzed
  * yet, so the bar slides directly from old → new instead of snapping through
@@ -780,23 +776,20 @@ function EngineToggle({
   evalText: string | null;
   onToggle: () => void;
 }) {
+  const tr = useEditorStrings();
   const score = evalText ?? '';
   const positive = score.startsWith('+') || score.startsWith('M');
   return (
     <button
       onClick={onToggle}
-      title={
-        enabled
-          ? 'Stockfish actif — clic pour désactiver'
-          : 'Activer Stockfish (analyse + flèches de coups suggérés)'
-      }
+      title={enabled ? tr.engineOnTitle : tr.engineOffTitle}
       className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[13px] font-semibold transition hover:brightness-[0.97] ${
         enabled
           ? 'border-info-border bg-info-soft text-info-text'
           : 'border-ground-line bg-ground-overlay text-seg-off'
       }`}
     >
-      <span>Engine</span>
+      <span>{tr.engineLabel}</span>
       <span
         className={`h-1.75 w-1.75 rounded-full transition ${
           enabled
@@ -826,6 +819,8 @@ function AnnotationPanel({
   annotation: Annotation | undefined;
   onPatch: (patch: Partial<Annotation>) => void;
 }) {
+  const tr = useEditorStrings();
+  const { nagLabels } = useCommon();
   // Only the comment is held locally for smooth typing; NAG and arrows are
   // mirrored straight from `annotation` so other writers (chessground onChange,
   // another panel) can't be silently overwritten on save.
@@ -851,15 +846,15 @@ function AnnotationPanel({
   return (
     <div className="rounded-[14px] border border-line bg-surface p-4 shadow-resting">
       <div className="mb-3.5 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-        Annotation
+        {tr.annotation}
       </div>
-      <div className="mb-2 text-xs font-semibold text-ink-soft">Qualité du coup</div>
+      <div className="mb-2 text-xs font-semibold text-ink-soft">{tr.moveQuality}</div>
       <div className="mb-4 flex gap-1.75">
         {NAG_ORDER.map(n => (
           <button
             key={n}
             onClick={() => toggleNag(n)}
-            title={NAG_LABELS[n]}
+            title={nagLabels[n]}
             className={`flex h-8 flex-1 items-center justify-center rounded-lg border text-[15px] font-bold transition ${NAG_COLORS[n]} ${
               currentNag === n
                 ? 'border-current bg-current/10 ring-2 ring-current/20'
@@ -870,27 +865,23 @@ function AnnotationPanel({
           </button>
         ))}
       </div>
-      <div className="mb-2 text-xs font-semibold text-ink-soft">Commentaire</div>
+      <div className="mb-2 text-xs font-semibold text-ink-soft">{tr.comment}</div>
       <textarea
         value={draftComment}
         onChange={e => setDraftComment(e.target.value)}
         onBlur={onCommentBlur}
-        placeholder="Idée du coup, plan, faiblesse à exploiter…"
+        placeholder={tr.commentPlaceholder}
         rows={3}
         className="w-full resize-y rounded-[10px] border border-line-strong bg-field p-3 text-sm text-ink placeholder:text-ink-muted focus:outline-none"
       />
       <div className="mt-3 flex items-center justify-between border-t border-line pt-3 text-[12.5px] text-ink-muted">
-        <span>
-          {arrowsCount > 0
-            ? `${arrowsCount} forme${arrowsCount > 1 ? 's' : ''} sur le plateau`
-            : 'Clic-droit-glisser pour dessiner des flèches'}
-        </span>
+        <span>{arrowsCount > 0 ? tr.shapesOnBoard(arrowsCount) : tr.drawArrowsHint}</span>
         {arrowsCount > 0 && (
           <button
             onClick={clearArrows}
             className="font-semibold text-warning-text transition hover:brightness-90"
           >
-            Effacer les flèches
+            {tr.clearArrows}
           </button>
         )}
       </div>

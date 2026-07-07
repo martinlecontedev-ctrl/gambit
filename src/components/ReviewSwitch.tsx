@@ -1,3 +1,5 @@
+import { useCommon } from '../i18n/common';
+
 /**
  * Small switch controlling review opt-in (opening master switch on the home
  * cards, per-chapter switch on the overview). Stops propagation: it sits
@@ -14,11 +16,12 @@ export function ReviewSwitch({
   onToggle: () => void;
   className?: string;
 }) {
+  const tr = useCommon();
   return (
     <button
       role="switch"
       aria-checked={on}
-      title={on ? 'Retirer de la révision' : 'Intégrer à la révision'}
+      title={on ? tr.reviewSwitch.on : tr.reviewSwitch.off}
       onClick={e => {
         e.stopPropagation();
         onToggle();

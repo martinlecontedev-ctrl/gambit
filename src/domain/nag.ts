@@ -18,15 +18,6 @@ export const NAG_COLORS: Record<Nag, string> = {
   6: 'text-nag-dubious',
 };
 
-export const NAG_LABELS: Record<Nag, string> = {
-  1: 'Bon coup',
-  2: 'Coup faible',
-  3: 'Brillant',
-  4: 'Gaffe',
-  5: 'Intéressant',
-  6: 'Douteux',
-};
-
 /** Tailwind background classes for the on-square badge overlay. */
 export const NAG_BADGE_BG: Record<Nag, string> = {
   1: 'bg-nag-good',

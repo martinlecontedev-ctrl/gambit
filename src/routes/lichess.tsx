@@ -35,6 +35,8 @@ import {
 } from '../domain/lichessStudySync';
 import { parentForNewVariant } from '../domain/tree';
 import type { Line, Opening } from '../domain/types';
+import { LOCALES, useLang } from '../i18n';
+import { useLichessStrings } from '../i18n/lichess';
 import { openingsRepo, studySyncRepo } from '../storage/repository';
 import { useStored } from '../storage/store';
 
@@ -43,13 +45,6 @@ export const Route = createFileRoute('/lichess')({ component: LichessPage });
 /** Games fetched for the analyses; the list paginates them. */
 const GAMES_MAX = 200;
 const PAGE_SIZE = 20;
-
-const SPEED_LABELS: Record<string, string> = {
-  bullet: 'Bullet',
-  blitz: 'Blitz',
-  rapid: 'Rapide',
-  classical: 'Classique',
-};
 
 /** Only deviations from move 4 on get flagged: before that it's just
  * "another opening was played", not repertoire feedback. */
@@ -81,6 +76,7 @@ function LichessPage() {
   const openings = useStored(() => openingsRepo.list());
   const account = useSyncExternalStore(subscribeAccount, getAccount, getAccount);
   const navigate = useNavigate();
+  const tr = useLichessStrings();
   const [games, setGames] = useState<RecentGame[] | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
 
@@ -147,7 +143,7 @@ function LichessPage() {
     const parent = parentForNewVariant(chapterLines, line, verdict.path.length);
     const variant: Line = {
       id: crypto.randomUUID(),
-      name: 'Variante',
+      name: tr.defaults.variant,
       chapterId: line.chapterId,
       parentLineId: parent.id,
       moves: full,
@@ -247,7 +243,7 @@ function LichessPage() {
     // Double-click / already-created guard: never silently stack a
     // same-named opening.
     if (openings.some(o => o.name === stat.name)) {
-      alert(`Une ouverture nommée « ${stat.name} » existe déjà.`);
+      alert(tr.playedOpenings.alreadyExists(stat.name));
       return;
     }
     const now = Date.now();
@@ -257,8 +253,8 @@ function LichessPage() {
       id: crypto.randomUUID(),
       name: stat.name,
       color: stat.color,
-      chapters: [{ id: chapterId, name: 'Principal', order: 0 }],
-      lines: [{ id: lineId, name: 'Ligne 1', chapterId, moves: stat.seedUcis }],
+      chapters: [{ id: chapterId, name: tr.defaults.mainChapter, order: 0 }],
+      lines: [{ id: lineId, name: tr.defaults.firstLine, chapterId, moves: stat.seedUcis }],
       createdAt: now,
       updatedAt: now,
     };
@@ -278,9 +274,7 @@ function LichessPage() {
             Lichess
           </h1>
           <p className="mt-2 text-[15px] text-on-muted">
-            {account
-              ? `Connecté en tant que ${account.username}.`
-              : 'Connecte ton compte pour croiser tes parties avec ton répertoire.'}
+            {account ? tr.header.connectedAs(account.username) : tr.header.tagline}
           </p>
         </div>
         {account && (
@@ -290,13 +284,13 @@ function LichessPage() {
               disabled={status === 'loading'}
               className="h-11 rounded-btn border border-chip-border bg-chip px-4.5 text-[14.5px] font-semibold text-chip-text shadow-resting transition hover:border-chip-hover disabled:opacity-40"
             >
-              Actualiser
+              {tr.header.refresh}
             </button>
             <button
               onClick={logout}
               className="h-11 rounded-btn border border-chip-border bg-chip px-4.5 text-[14.5px] font-semibold text-chip-text shadow-resting transition hover:border-danger-border hover:bg-danger-soft hover:text-danger-text"
             >
-              Déconnecter
+              {tr.header.signOut}
             </button>
           </div>
         )}
@@ -363,20 +357,16 @@ function LichessPage() {
 }
 
 function ConnectCard() {
+  const tr = useLichessStrings();
   return (
     <div className="flex flex-col items-center rounded-[18px] border border-line bg-surface px-8 py-14 text-center text-ink shadow-card">
-      <p className="text-lg font-bold">Connecte ton compte Lichess</p>
-      <p className="mt-2 max-w-md text-sm text-meta">
-        Tes dernières parties comparées à ton répertoire — où es-tu sorti de la
-        théorie, qu'attendait ta préparation ? — et l'explorateur d'ouvertures
-        sans jeton à coller. OAuth officiel, aucun scope demandé, tout reste
-        stocké en local.
-      </p>
+      <p className="text-lg font-bold">{tr.connect.title}</p>
+      <p className="mt-2 max-w-md text-sm text-meta">{tr.connect.body}</p>
       <button
         onClick={() => void login()}
         className="btn-accent mt-7 flex h-11 items-center rounded-btn px-6 text-[14.5px] font-semibold"
       >
-        Connecter Lichess
+        {tr.connect.button}
       </button>
     </div>
   );
@@ -400,15 +390,16 @@ function PlayedOpeningsCard({
   owners: Record<'white' | 'black', Map<string, string>>;
   onCreate: (stat: PlayedOpeningStat) => void;
 }) {
+  const tr = useLichessStrings();
   if (stats === null) return null;
   const columns: { color: 'white' | 'black'; label: string }[] = [
-    { color: 'white', label: 'Blancs' },
-    { color: 'black', label: 'Noirs' },
+    { color: 'white', label: tr.playedOpenings.white },
+    { color: 'black', label: tr.playedOpenings.black },
   ];
   return (
     <div className="rounded-[18px] border border-line bg-surface px-6 py-5 shadow-card">
       <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-        Ouvertures jouées
+        {tr.playedOpenings.title}
       </div>
       <div className="grid gap-8 md:grid-cols-2">
         {columns.map(({ color, label }) => {
@@ -419,7 +410,7 @@ function PlayedOpeningsCard({
                 {label}
               </div>
               {rows.length === 0 ? (
-                <p className="py-1 text-sm text-meta">Aucune partie reconnue.</p>
+                <p className="py-1 text-sm text-meta">{tr.playedOpenings.empty}</p>
               ) : (
                 <ul className="divide-y divide-line">
                   {rows.map((s, i) => (
@@ -452,19 +443,20 @@ function PlayedOpeningRow({
   covered: boolean;
   onCreate: () => void;
 }) {
+  const tr = useLichessStrings();
   const wp = (stat.wins / stat.games) * 100;
   const dp = (stat.draws / stat.games) * 100;
   const lp = 100 - wp - dp;
   return (
     <li
       className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-2 transition hover:bg-track"
-      title={`${stat.games} parties · ${stat.wins}V ${stat.draws}N ${stat.losses}D`}
+      title={tr.playedOpenings.rowTitle(stat.games, stat.wins, stat.draws, stat.losses)}
     >
       <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink">
         {stat.name}
         {favorite && (
           <span className="ml-1.5 rounded-full border border-accent-soft-border bg-accent-soft px-1.5 py-px text-[10.5px] font-bold text-accent-soft-text">
-            préférée
+            {tr.playedOpenings.favourite}
           </span>
         )}
       </span>
@@ -494,17 +486,17 @@ function PlayedOpeningRow({
       {covered ? (
         <span
           className="w-30 shrink-0 text-right text-[11.5px] text-ink-muted"
-          title="Cette ouverture est couverte par ton répertoire"
+          title={tr.playedOpenings.coveredTitle}
         >
-          ✓ au répertoire
+          {tr.playedOpenings.covered}
         </span>
       ) : (
         <button
           onClick={onCreate}
-          title="Créer un répertoire pour cette ouverture, pré-rempli avec tes coups les plus joués"
+          title={tr.playedOpenings.createTitle}
           className="w-30 shrink-0 rounded-full border border-accent-soft-border bg-accent-soft px-2 py-1 text-[11.5px] font-semibold text-accent-soft-text transition hover:brightness-[0.98]"
         >
-          Créer un répertoire
+          {tr.playedOpenings.create}
         </button>
       )}
     </li>
@@ -520,6 +512,7 @@ function GamesCard({
   status: 'idle' | 'loading' | 'error';
   renderRow: (game: RecentGame) => React.ReactNode;
 }) {
+  const tr = useLichessStrings();
   const [page, setPage] = useState(0);
   // Fresh data (refresh, reconnect) restarts on the first page.
   useEffect(() => {
@@ -532,16 +525,14 @@ function GamesCard({
   return (
     <div className="rounded-[18px] border border-line bg-surface px-6 py-5 text-ink shadow-card">
       <div className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-        Parties récentes · face au répertoire
+        {tr.games.title}
       </div>
       {status === 'error' ? (
-        <p className="py-2 text-sm text-meta">
-          Impossible de charger les parties — réessaie dans un instant.
-        </p>
+        <p className="py-2 text-sm text-meta">{tr.games.loadError}</p>
       ) : games === null ? (
-        <p className="animate-pulse py-2 text-sm text-meta">Chargement…</p>
+        <p className="animate-pulse py-2 text-sm text-meta">{tr.games.loading}</p>
       ) : games.length === 0 ? (
-        <p className="py-2 text-sm text-meta">Aucune partie récente.</p>
+        <p className="py-2 text-sm text-meta">{tr.games.empty}</p>
       ) : (
         <>
           <ul
@@ -560,17 +551,17 @@ function GamesCard({
                 disabled={current === 0}
                 className="text-[12.5px] font-semibold text-ink-muted transition hover:text-ink disabled:opacity-40"
               >
-                ← Précédentes
+                {tr.games.prev}
               </button>
               <span className="text-[12.5px] text-meta tnum">
-                Page {current + 1} / {pageCount} · {games.length} parties
+                {tr.games.pageInfo(current + 1, pageCount, games.length)}
               </span>
               <button
                 onClick={() => setPage(current + 1)}
                 disabled={current >= pageCount - 1}
                 className="text-[12.5px] font-semibold text-ink-muted transition hover:text-ink disabled:opacity-40"
               >
-                Suivantes →
+                {tr.games.next}
               </button>
             </div>
           )}
@@ -592,6 +583,8 @@ function SyncCard({
   openings: Opening[];
   account: LichessAccount;
 }) {
+  const tr = useLichessStrings();
+  const lang = useLang();
   const syncMap = useStored(() => studySyncRepo.all());
   const [pushing, setPushing] = useState<Record<string, boolean>>({});
   const [failed, setFailed] = useState<Record<string, boolean>>({});
@@ -630,7 +623,7 @@ function SyncCard({
   const pushedLabel = (openingId: string): string | undefined => {
     const sync = syncMap[openingId];
     if (!sync) return undefined;
-    return new Date(sync.pushedAt).toLocaleString('fr-FR', {
+    return new Date(sync.pushedAt).toLocaleString(LOCALES[lang], {
       day: 'numeric',
       month: 'short',
       hour: '2-digit',
@@ -642,34 +635,31 @@ function SyncCard({
     <div className="rounded-[18px] border border-line bg-surface px-6 py-5 shadow-card">
       <div className="mb-2.5 flex items-center justify-between gap-3">
         <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-          Sauvegarde du répertoire · études privées Lichess
+          {tr.sync.title}
         </span>
         <button
           onClick={() => void pushAll()}
           disabled={busyAll || openings.every(o => !pushable(o))}
           className="text-[12.5px] font-semibold text-ink-muted transition hover:text-ink disabled:opacity-40"
         >
-          {busyAll ? 'Envoi…' : 'Tout pousser'}
+          {busyAll ? tr.sync.pushing : tr.sync.pushAll}
         </button>
       </div>
 
       {authIssue && (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning-border bg-warning-soft px-3 py-2">
-          <span className="text-sm text-warning-text">
-            Ta session Lichess ne couvre pas encore l'écriture d'études —
-            reconnecte ton compte pour l'accorder.
-          </span>
+          <span className="text-sm text-warning-text">{tr.sync.authIssue}</span>
           <button
             onClick={() => void login()}
             className="btn-accent rounded-md px-3 py-1.5 text-xs font-semibold"
           >
-            Reconnecter
+            {tr.sync.reconnect}
           </button>
         </div>
       )}
 
       {openings.length === 0 ? (
-        <p className="py-2 text-sm text-meta">Aucune ouverture à sauvegarder.</p>
+        <p className="py-2 text-sm text-meta">{tr.sync.empty}</p>
       ) : (
         <ul className="divide-y divide-line">
           {openings.map(o => {
@@ -685,17 +675,17 @@ function SyncCard({
                 </span>
                 <span className="shrink-0 text-[12px] text-ink-muted">
                   {failed[o.id]
-                    ? 'échec — réessaie'
+                    ? tr.sync.failed
                     : label
-                      ? `poussée le ${label}`
-                      : 'jamais poussée'}
+                      ? tr.sync.pushedAt(label)
+                      : tr.sync.neverPushed}
                 </span>
                 {sync && (
                   <a
                     href={`https://lichess.org/study/${sync.studyId}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    title="Ouvrir l'étude miroir sur Lichess"
+                    title={tr.sync.openStudyTitle}
                     className="shrink-0 px-1 text-[12.5px] font-semibold text-ink-muted transition hover:text-ink"
                   >
                     ↗
@@ -704,14 +694,10 @@ function SyncCard({
                 <button
                   onClick={() => void push(o)}
                   disabled={!!pushing[o.id] || busyAll || !pushable(o)}
-                  title={
-                    pushable(o)
-                      ? 'Pousser cette ouverture vers son étude Lichess'
-                      : 'Ouverture vide — rien à pousser'
-                  }
+                  title={pushable(o) ? tr.sync.pushTitle : tr.sync.pushEmptyTitle}
                   className="shrink-0 rounded-full border border-chip-border bg-chip px-2.5 py-1 text-[12px] font-semibold text-chip-text transition hover:border-chip-hover disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {pushing[o.id] ? 'Envoi…' : 'Pousser'}
+                  {pushing[o.id] ? tr.sync.pushing : tr.sync.push}
                 </button>
               </li>
             );
@@ -734,7 +720,9 @@ function GameRow({
   onRevise?: () => void;
   onAddLine?: () => void;
 }) {
-  const date = new Date(game.createdAt).toLocaleDateString('fr-FR', {
+  const tr = useLichessStrings();
+  const lang = useLang();
+  const date = new Date(game.createdAt).toLocaleDateString(LOCALES[lang], {
     day: 'numeric',
     month: 'short',
   });
@@ -745,7 +733,11 @@ function GameRow({
         ? 'border-danger-border bg-danger-soft text-danger-text'
         : 'border-line bg-track text-ink-soft';
   const resultLabel =
-    game.result === 'win' ? 'V' : game.result === 'loss' ? 'D' : 'N';
+    game.result === 'win'
+      ? tr.results.win
+      : game.result === 'loss'
+        ? tr.results.loss
+        : tr.results.draw;
 
   const [open, setOpen] = useState(false);
 
@@ -754,7 +746,7 @@ function GameRow({
       <div className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-track">
         <span className="w-13 shrink-0 text-[11.5px] text-ink-muted">{date}</span>
         <span className="w-16 shrink-0 text-[11.5px] text-ink-muted">
-          {SPEED_LABELS[game.speed] ?? game.speed}
+          {tr.speeds[game.speed] ?? game.speed}
         </span>
         <span
           className={`flex h-5.5 w-5.5 shrink-0 items-center justify-center rounded-md border text-[11px] font-bold ${resultTone}`}
@@ -771,11 +763,7 @@ function GameRow({
           {deviation && (
             <button
               onClick={() => setOpen(o => !o)}
-              title={
-                open
-                  ? 'Replier la position de bifurcation'
-                  : 'Voir la position de bifurcation'
-              }
+              title={open ? tr.games.hideBifurcation : tr.games.showBifurcation}
               className="max-w-full truncate align-middle"
             >
               <VerdictChip deviation={deviation} />
@@ -789,30 +777,26 @@ function GameRow({
           {onRevise && (
             <button
               onClick={onRevise}
-              title="Session exercice sur la position du coup manqué"
+              title={tr.games.reviseTitle}
               className="rounded-full border border-accent-soft-border bg-accent-soft px-2.5 py-1 text-[12px] font-semibold text-accent-soft-text transition hover:brightness-[0.98]"
             >
-              Réviser ce coup
+              {tr.games.revise}
             </button>
           )}
           {onAddLine && (
             <button
               onClick={onAddLine}
-              title="Créer une variante avec le coup adverse et ouvrir l'éditeur dessus"
+              title={tr.games.addLineTitle}
               className="rounded-full border border-chip-border bg-chip px-2.5 py-1 text-[12px] font-semibold text-chip-text transition hover:border-chip-hover"
             >
-              Ajouter au répertoire
+              {tr.games.addLine}
             </button>
           )}
           <a
             href={`https://lichess.org/${game.id}/${game.userColor}#${deviation?.ply ?? 0}`}
             target="_blank"
             rel="noopener noreferrer"
-            title={
-              deviation
-                ? 'Ouvrir la partie sur Lichess, à la position de sortie de théorie'
-                : 'Ouvrir la partie sur Lichess'
-            }
+            title={deviation ? tr.games.openAtDeviation : tr.games.openGame}
             className="px-1 text-[12.5px] font-semibold text-ink-muted transition hover:text-ink"
           >
             ↗
@@ -837,6 +821,7 @@ function BifurcationPanel({
   deviation: Deviation;
   orientation: 'white' | 'black';
 }) {
+  const tr = useLichessStrings();
   const config: Config = useMemo(
     () => ({
       fen: fenFromKey(deviation.key),
@@ -873,14 +858,16 @@ function BifurcationPanel({
       <div className="space-y-2 pt-1 text-[13px]">
         <p>
           <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full bg-danger" />
-          {deviation.kind === 'user-left' ? 'Toi' : 'Adversaire'} :{' '}
+          {deviation.kind === 'user-left'
+            ? tr.bifurcation.you
+            : tr.bifurcation.opponent}{' '}
           <span className="font-semibold">
             <FigurineSan san={deviation.played} />
           </span>
         </p>
         <p>
           <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full bg-success" />
-          Répertoire :{' '}
+          {tr.bifurcation.repertoire}{' '}
           {deviation.expected.map((san, i) => (
             <span key={i} className="font-semibold">
               {i > 0 && ' / '}
@@ -890,8 +877,8 @@ function BifurcationPanel({
         </p>
         <p className="text-meta">
           {deviation.kind === 'user-left'
-            ? '« Réviser ce coup » rejoue cette position en exercice.'
-            : '« Ajouter au répertoire » greffe ce coup comme variante à préparer.'}
+            ? tr.bifurcation.userHint
+            : tr.bifurcation.opponentHint}
         </p>
       </div>
     </div>
@@ -899,6 +886,7 @@ function BifurcationPanel({
 }
 
 function VerdictChip({ deviation }: { deviation: Deviation }) {
+  const tr = useLichessStrings();
   const base =
     'inline-flex max-w-full items-center gap-1 truncate rounded-full border px-2.5 py-1 text-[12px] font-semibold';
   if (deviation.kind === 'user-left') {
@@ -906,8 +894,9 @@ function VerdictChip({ deviation }: { deviation: Deviation }) {
       <span
         className={`${base} border-danger-border bg-danger-soft text-danger-text`}
       >
-        Dévié {moveNumberLabel(deviation.ply)}&nbsp;: joué{' '}
-        <FigurineSan san={deviation.played} /> — rép.&nbsp;:{' '}
+        {tr.verdicts.userLeftPlayed(moveNumberLabel(deviation.ply))}{' '}
+        <FigurineSan san={deviation.played} />
+        {tr.verdicts.userLeftExpected}{' '}
         {deviation.expected.map((san, i) => (
           <span key={i}>
             {i > 0 && ' / '}
@@ -919,7 +908,7 @@ function VerdictChip({ deviation }: { deviation: Deviation }) {
   }
   return (
     <span className={`${base} border-info-border bg-info-soft text-info-text`}>
-      Adversaire sort de la théorie {moveNumberLabel(deviation.ply)} (
+      {tr.verdicts.opponentLeft(moveNumberLabel(deviation.ply))} (
       <FigurineSan san={deviation.played} />)
     </span>
   );

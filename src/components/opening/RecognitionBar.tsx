@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { recognizeOpening, type Opening as RecognizedOpening } from '../../domain/openings-db';
 import type { Color } from '../../domain/types';
+import { useComponentStrings } from '../../i18n/components';
 
 /**
  * ECO chip + recognized opening name for the position under the cursor,
@@ -67,6 +68,7 @@ function YoutubeSearchButton({
   opening: RecognizedOpening | null;
   color: Color;
 }) {
+  const tr = useComponentStrings().recognition;
   const baseClass =
     'inline-flex shrink-0 items-center gap-1.5 rounded-[10px] border border-chip-border bg-chip px-3 py-1 text-[13px] font-semibold transition';
   const icon = (
@@ -84,7 +86,7 @@ function YoutubeSearchButton({
       <span
         className={`${baseClass} cursor-not-allowed text-on-idle`}
         aria-disabled="true"
-        title="Pas d'ouverture reconnue"
+        title={tr.noOpening}
       >
         {icon} YouTube
       </span>
@@ -98,7 +100,7 @@ function YoutubeSearchButton({
       target="_blank"
       rel="noopener noreferrer"
       className={`${baseClass} text-danger hover:border-chip-hover`}
-      title={`Rechercher "${query}" sur YouTube`}
+      title={tr.searchYoutube(query)}
     >
       {icon} YouTube
     </a>
