@@ -135,7 +135,7 @@ function Home() {
   };
 
   return (
-    <main className="mx-auto max-w-310 px-10 pt-10 pb-20">
+    <main className="mx-auto max-w-310 px-4 pt-8 pb-20 sm:px-6 lg:px-10 lg:pt-10">
       <div className="mb-6.5 flex flex-wrap items-end justify-between gap-6">
         <div>
           <h1 className="text-[42px] font-extrabold leading-none tracking-[-0.02em] text-on-ink">
@@ -170,7 +170,7 @@ function Home() {
         </div>
       )}
 
-      <div className="grid grid-cols-[248px_1fr] items-start gap-10">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[248px_1fr] lg:items-start lg:gap-10">
         <FolderSidebar
           folders={sortedFolders}
           selected={selectedFolder}
@@ -340,8 +340,8 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
   }, [byDay]);
 
   return (
-    <div className="flex items-stretch gap-8 rounded-[18px] border border-line bg-surface px-6 py-5.5 text-ink shadow-card">
-      <div className="w-64 shrink-0 border-r border-line pr-8">
+    <div className="flex flex-col gap-5 rounded-[18px] border border-line bg-surface px-5 py-5 text-ink shadow-card sm:px-6 sm:py-5.5 lg:flex-row lg:items-stretch lg:gap-8">
+      <div className="w-full border-b border-line pb-5 lg:w-64 lg:shrink-0 lg:border-r lg:border-b-0 lg:pr-8 lg:pb-0">
         <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
           {tr.activity.streakTitle}
         </div>

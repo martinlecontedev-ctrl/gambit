@@ -243,7 +243,7 @@ function StudyImpl({
 function NothingDue({ openingId }: { openingId: string }) {
   const tr = useStudyStrings();
   return (
-    <main className="mx-auto max-w-md px-10 py-16 text-center">
+    <main className="mx-auto max-w-md px-4 py-16 text-center sm:px-6 lg:px-10">
       <p className="text-2xl font-bold text-on-ink">{tr.nothingDue.title}</p>
       <p className="mt-2 text-sm text-on-muted">{tr.nothingDue.body}</p>
       <div className="mt-8 flex justify-center gap-2.5">
@@ -446,7 +446,7 @@ function ReviewSession({
     ) : null;
 
   return (
-    <main className="mx-auto max-w-325 px-10 pt-6 pb-17.5">
+    <main className="mx-auto max-w-325 px-4 pt-6 pb-16 sm:px-6 lg:px-10 lg:pb-17.5">
       {openingsFile && (
         <OpeningsFile items={openingsFile} activeId={opening.id} />
       )}
@@ -470,15 +470,17 @@ function ReviewSession({
         </div>
       </div>
 
-      <div className="grid items-start gap-8 lg:grid-cols-[240px_1fr_340px]">
-        <ChapterRail
-          chapters={chapters}
-          dueByChapter={dueByChapter}
-          activeId={activeChapterId}
-          onSelect={onSelectChapter}
-        />
+      <div className="grid items-start gap-6 lg:grid-cols-[240px_1fr_340px] lg:gap-8">
+        <div className="order-3 lg:order-0">
+          <ChapterRail
+            chapters={chapters}
+            dueByChapter={dueByChapter}
+            activeId={activeChapterId}
+            onSelect={onSelectChapter}
+          />
+        </div>
 
-        <section className="flex flex-col items-center">
+        <section className="order-1 flex flex-col items-center lg:order-0">
           {card ? (
             <div className="flex w-full max-w-140 flex-col items-center gap-4">
               <div className="relative w-full">
@@ -615,7 +617,7 @@ function ReviewSession({
           )}
         </section>
 
-        <aside className="flex flex-col gap-4">
+        <aside className="order-2 flex flex-col gap-4 lg:order-0">
           <div className="rounded-card border border-line bg-surface p-5.5 text-ink shadow-card">
             <div className="text-[21px] font-extrabold tracking-[-0.01em]">
               {opening.name}

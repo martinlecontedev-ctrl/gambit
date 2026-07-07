@@ -17,7 +17,7 @@ function RootLayout() {
   return (
     <div className="app-ground min-h-screen antialiased">
       <header className="sticky top-0 z-30 border-b border-header-line bg-header backdrop-blur-md backdrop-saturate-150">
-        <div className="mx-auto flex h-16 max-w-310 items-center justify-between px-10">
+        <div className="mx-auto flex h-16 max-w-310 items-center justify-between px-4 sm:px-6 lg:px-10">
           <Link to="/" className="flex items-center gap-2.5">
             <span
               className="inline-block h-4.5 w-4.5 rounded-md"
@@ -29,8 +29,8 @@ function RootLayout() {
             />
             <span className="text-xl font-extrabold tracking-tight text-on-ink">Gambit</span>
           </Link>
-          <div className="flex items-center gap-7">
-            <nav className="flex items-center gap-7 text-[12.5px] font-bold tracking-[0.14em]">
+          <div className="flex items-center gap-3 sm:gap-5 lg:gap-7">
+            <nav className="flex items-center gap-3.5 text-[11px] tracking-widest sm:gap-6 sm:text-[12.5px] sm:tracking-[0.14em] font-bold">
               <Link
                 to="/"
                 className={`transition-colors hover:text-on-ink ${active === 'openings' ? 'text-on-ink' : 'text-on-idle'}`}

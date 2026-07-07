@@ -39,7 +39,7 @@ function NewOpening() {
   };
 
   return (
-    <main className="mx-auto max-w-md px-10 pt-12 pb-20">
+    <main className="mx-auto max-w-md px-4 pt-10 pb-20 sm:px-6 lg:px-10 lg:pt-12">
       <h1 className="text-[32px] font-extrabold tracking-[-0.02em] text-on-ink">
         {tr.newOpening.title}
       </h1>

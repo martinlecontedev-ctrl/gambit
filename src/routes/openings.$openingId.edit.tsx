@@ -543,8 +543,8 @@ function EditOpeningInner({
   const canDeleteVariant = !!line && line.id !== rootLine?.id;
 
   return (
-    <main className="mx-auto max-w-325 px-10 pb-17.5 pt-4">
-      <div className="mb-4 grid grid-cols-[240px_1fr_350px] items-center gap-8">
+    <main className="mx-auto max-w-325 px-4 pb-16 pt-4 sm:px-6 lg:px-10 lg:pb-17.5">
+      <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-[240px_1fr_350px] lg:items-center lg:gap-8">
         <Link
           to="/openings/$openingId"
           params={{ openingId: opening.id }}
@@ -590,14 +590,14 @@ function EditOpeningInner({
           </button>
         </div>
       </div>
-      <div className="grid grid-cols-[240px_1fr_350px] items-start gap-8">
-      <aside className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr_350px] lg:items-start lg:gap-8">
+      <aside className="order-3 flex flex-col gap-4 lg:order-0">
         <ExplorerPanel fen={currentFen} onPlayMove={playMove} />
       </aside>
       {/* Constrained to the board width and end-aligned: the column's spare
           space lands between the explorer and the board, the move panels sit
           close, and the ECO/YouTube bar lines up with the board edges. */}
-      <section className="w-132 max-w-full justify-self-end space-y-4">
+      <section className="order-1 w-132 max-w-full justify-self-center space-y-4 lg:order-0 lg:justify-self-end">
         <EngineToggle
           enabled={engineEnabled}
           isThinking={isThinking}
@@ -651,7 +651,7 @@ function EditOpeningInner({
         </div>
       </section>
 
-      <aside className="flex flex-col gap-4">
+      <aside className="order-2 flex flex-col gap-4 lg:order-0">
         <div className="overflow-hidden rounded-[14px] border border-line bg-surface text-ink shadow-resting">
           <div className="px-4 pt-4">
             <div className="mb-3 flex items-baseline justify-between gap-2">

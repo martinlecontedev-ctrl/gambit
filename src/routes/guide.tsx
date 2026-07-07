@@ -25,7 +25,7 @@ function Guide() {
   ];
 
   return (
-    <main className="mx-auto max-w-260 px-10 pb-22.5 pt-8.5">
+    <main className="mx-auto max-w-260 px-4 pb-20 pt-8 sm:px-6 lg:px-10 lg:pb-22.5 lg:pt-8.5">
       <Link
         to="/"
         className="mb-3.5 inline-flex items-center gap-2 text-[14.5px] font-semibold text-on-muted transition hover:text-on-ink"
@@ -35,8 +35,8 @@ function Guide() {
       <h1 className="text-[40px] font-extrabold tracking-[-0.02em] text-on-ink">{tr.title}</h1>
       <p className="mt-2.5 text-[15.5px] text-on-muted">{tr.intro}</p>
 
-      <div className="mt-8.5 grid grid-cols-[180px_1fr] items-start gap-12">
-        <nav className="sticky top-22 flex flex-col gap-1">
+      <div className="mt-8 grid grid-cols-1 gap-8 lg:mt-8.5 lg:grid-cols-[180px_1fr] lg:items-start lg:gap-12">
+        <nav className="hidden lg:sticky lg:top-22 lg:flex lg:flex-col lg:gap-1">
           {toc.map(t => (
             <a
               key={t.id}
@@ -83,7 +83,7 @@ function Guide() {
           </Section>
 
           <Section id="g-nag" title={s.nag.title}>
-            <ul className="grid grid-cols-2 gap-x-7 gap-y-3">
+            <ul className="grid grid-cols-1 gap-x-7 gap-y-3 sm:grid-cols-2">
               <NagRow symbol="!" color="text-nag-good" label={s.nag.rows.good} />
               <NagRow symbol="!?" color="text-nag-interesting" label={s.nag.rows.interesting} />
               <NagRow symbol="!!" color="text-nag-brilliant" label={s.nag.rows.brilliant} />

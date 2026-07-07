@@ -267,7 +267,7 @@ function LichessPage() {
   };
 
   return (
-    <main className="mx-auto max-w-260 px-10 pt-10 pb-20">
+    <main className="mx-auto max-w-260 px-4 pt-8 pb-20 sm:px-6 lg:px-10 lg:pt-10">
       <div className="mb-6.5 flex flex-wrap items-end justify-between gap-6">
         <div>
           <h1 className="text-[42px] font-extrabold leading-none tracking-[-0.02em] text-on-ink">
