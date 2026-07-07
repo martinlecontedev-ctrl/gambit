@@ -334,8 +334,8 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
   const todayKey = localDate(now);
 
   return (
-    <div className="flex h-full items-center gap-5 rounded-[18px] border border-line bg-surface px-5 py-4.5 text-ink shadow-card sm:px-6">
-      <div className="shrink-0">
+    <div className="flex h-full min-h-40 items-stretch gap-5 rounded-[18px] border border-line bg-surface px-5 py-4.5 text-ink shadow-card sm:px-6">
+      <div className="flex shrink-0 flex-col justify-center">
         <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
           {tr.activity.streakTitle}
         </div>
@@ -358,8 +358,10 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
         </div>
       </div>
 
+      {/* Tall thin-bar graph: bars fill the card height and rise with the
+          day's review count (relative to the week's peak). */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-14 items-end gap-[3px]">
+        <div className="flex flex-1 items-end gap-[3px]">
           {week.map(d => {
             const isToday = d.key === todayKey;
             return (
@@ -368,7 +370,7 @@ function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number })
                 title={tr.activity.dayTooltip(d.count, dayFmt.format(d.date))}
                 className="flex-1 rounded-t-xs transition-[filter] hover:brightness-90"
                 style={{
-                  height: d.count > 0 ? `${Math.max(12, (d.count / peak) * 100)}%` : '3px',
+                  height: d.count > 0 ? `${Math.max(6, (d.count / peak) * 100)}%` : '3px',
                   background:
                     d.count > 0
                       ? isToday
