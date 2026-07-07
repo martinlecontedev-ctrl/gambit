@@ -164,7 +164,7 @@ function Home() {
       </div>
 
       {openings.length > 0 && (
-        <div className="mb-7.5 space-y-5">
+        <div className="mb-7.5 grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-stretch">
           <ReviewBanner totalDue={totalDue} done={done} dueOpenings={dueOpenings} />
           <ActivityCard reviews={reviews} now={now} />
         </div>
@@ -230,7 +230,7 @@ function ReviewBanner({
 
   if (totalDue === 0) {
     return (
-      <div className="flex items-center gap-4 rounded-[18px] border border-line bg-surface px-6 py-5.5 text-ink shadow-card">
+      <div className="flex h-full items-center gap-4 rounded-[18px] border border-line bg-surface px-5 py-5 text-ink shadow-card sm:px-6 sm:py-5.5">
         <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-success-soft text-2xl text-success-text">
           ✓
         </span>
@@ -251,7 +251,7 @@ function ReviewBanner({
       : `${names.slice(0, 3).join(', ')} +${names.length - 3}`;
 
   return (
-    <div className="rounded-[18px] border border-line bg-surface px-6 py-5.5 text-ink shadow-card">
+    <div className="flex h-full flex-col justify-between gap-4.5 rounded-[18px] border border-line bg-surface px-5 py-5 text-ink shadow-card sm:px-6 sm:py-5.5">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-5">
           <span className="text-[54px] font-extrabold leading-[0.9] tracking-[-0.03em] text-accent tnum">
@@ -293,17 +293,25 @@ function ReviewBanner({
 
 /** One heat cell per day; `null` marks the future days of the current week so
  * the last grid column keeps its 7-row shape. */
-/** The activity graph covers the last 8 weeks — recent rhythm, not a year of
- * mostly-empty calendar. One bar per day, height ∝ successful reviews. */
-const GRAPH_DAYS = 56;
+/** Heat scale for the day cells: mixed against the card surface so it follows
+ * the active theme. Index = heatLevel(count). */
+const HEAT_BG = [
+  'var(--color-track)',
+  'color-mix(in srgb, var(--accent) 28%, var(--color-surface))',
+  'color-mix(in srgb, var(--accent) 52%, var(--color-surface))',
+  'color-mix(in srgb, var(--accent) 76%, var(--color-surface))',
+  'var(--accent)',
+];
+const heatLevel = (n: number): number =>
+  n === 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 20 ? 3 : 4;
 
-type GraphDay = { key: string; date: Date; count: number };
+type WeekDay = { key: string; date: Date; count: number };
 
-/** Daily series ending today. Date arithmetic goes through `setDate` so DST
- * transitions can't skip or double a day. */
-function buildGraphDays(byDay: Map<string, number>, now: number): GraphDay[] {
-  const days: GraphDay[] = [];
-  for (let back = GRAPH_DAYS - 1; back >= 0; back--) {
+/** The last 7 days ending today, oldest first. Date arithmetic goes through
+ * `setDate` so DST transitions can't skip or double a day. */
+function buildWeekDays(byDay: Map<string, number>, now: number): WeekDay[] {
+  const days: WeekDay[] = [];
+  for (let back = 6; back >= 0; back--) {
     const d = new Date(now);
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() - back);
@@ -313,121 +321,79 @@ function buildGraphDays(byDay: Map<string, number>, now: number): GraphDay[] {
   return days;
 }
 
+/** Compact streak card: current streak + the last 7 days as heat cells.
+ * Sits at half width beside the review banner. */
 function ActivityCard({ reviews, now }: { reviews: ReviewEvent[]; now: number }) {
   const tr = useHomeStrings();
   const lang = useLang();
-  const fmt = useMemo(
-    () => ({
-      tick: new Intl.DateTimeFormat(LOCALES[lang], { day: 'numeric', month: 'short' }),
-      day: new Intl.DateTimeFormat(LOCALES[lang], {
+  const weekdayFmt = useMemo(
+    () => new Intl.DateTimeFormat(LOCALES[lang], { weekday: 'narrow' }),
+    [lang],
+  );
+  const dayFmt = useMemo(
+    () =>
+      new Intl.DateTimeFormat(LOCALES[lang], {
         weekday: 'short',
         day: 'numeric',
         month: 'long',
       }),
-    }),
     [lang],
   );
   const byDay = useMemo(() => activityByDay(reviews), [reviews]);
   const streak = useMemo(() => streaks(reviews, now), [reviews, now]);
-  const graph = useMemo(() => buildGraphDays(byDay, now), [byDay, now]);
-  const peak = useMemo(() => Math.max(...graph.map(d => d.count)), [graph]);
+  const week = useMemo(() => buildWeekDays(byDay, now), [byDay, now]);
   const todayKey = localDate(now);
 
-  const yearTotal = useMemo(() => {
-    let s = 0;
-    for (const v of byDay.values()) s += v;
-    return s;
-  }, [byDay]);
-
   return (
-    <div className="flex flex-col gap-5 rounded-[18px] border border-line bg-surface px-5 py-5 text-ink shadow-card sm:px-6 sm:py-5.5 lg:flex-row lg:items-stretch lg:gap-8">
-      <div className="w-full border-b border-line pb-5 lg:w-64 lg:shrink-0 lg:border-r lg:border-b-0 lg:pr-8 lg:pb-0">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-          {tr.activity.streakTitle}
-        </div>
-        <div className="mt-2.5 flex items-baseline gap-2.5">
+    <div className="flex h-full flex-col rounded-[18px] border border-line bg-surface px-5 py-5 text-ink shadow-card sm:px-6 sm:py-5.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">
+        <div className="flex items-baseline gap-2.5">
           <span
-            className={`text-[54px] font-extrabold leading-[0.9] tracking-[-0.03em] tnum ${
+            className={`text-[40px] font-extrabold leading-[0.9] tracking-[-0.03em] tnum ${
               streak.current > 0 ? 'text-accent' : 'text-ink-muted'
             }`}
           >
             {streak.current}
           </span>
-          <span className="text-lg font-bold leading-tight">
+          <span className="text-base font-bold leading-tight">
             {tr.activity.daysInARow(streak.current)}
           </span>
         </div>
-        <div className="mt-3.5">
-          {streak.todayDone ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-success-border bg-success-soft px-2.75 py-1.25 text-[12.5px] font-semibold text-success-text">
-              ✓ {tr.activity.doneToday}
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-warning-border bg-warning-soft px-2.75 py-1.25 text-[12.5px] font-semibold text-warning-text">
-              {streak.current > 0 ? tr.activity.keepIt : tr.activity.startIt}
-            </span>
-          )}
-        </div>
-        <div className="mt-4 space-y-1 text-[12.5px] text-meta">
-          <p>
-            {tr.activity.record}{' '}
-            <span className="font-bold text-ink-soft tnum">{streak.best}</span>{' '}
-            {tr.activity.days(streak.best)}
-          </p>
-          <p>
-            <span className="font-bold text-ink-soft tnum">{yearTotal}</span>{' '}
-            {tr.activity.reviewsYear(yearTotal)}
-          </p>
-        </div>
+        {streak.todayDone ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-success-border bg-success-soft px-2.5 py-1 text-[12px] font-semibold text-success-text">
+            ✓ {tr.activity.doneToday}
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-warning-border bg-warning-soft px-2.5 py-1 text-[12px] font-semibold text-warning-text">
+            {streak.current > 0 ? tr.activity.keepIt : tr.activity.startIt}
+          </span>
+        )}
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="mb-2 flex items-baseline justify-between">
-          <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted">
-            {tr.activity.graphTitle}
-          </span>
-          <span className="text-[11.5px] text-meta">
-            {peak > 0 ? tr.activity.peak(peak) : tr.activity.noBars}
-          </span>
-        </div>
-        {/* One flex-1 bar per day: uniform widths at any card width, no chart
-            lib. Height ∝ count against the window's peak; zero days keep a
-            2px stub so the rhythm (and the gaps) stay honest. */}
-        <div className="flex flex-1 items-end gap-[2.5px]" style={{ minHeight: 96 }}>
-          {graph.map(day => {
-            const isToday = day.key === todayKey;
-            return (
+      <div className="mt-auto flex gap-1.5 pt-5">
+        {week.map(d => {
+          const isToday = d.key === todayKey;
+          return (
+            <div key={d.key} className="flex flex-1 flex-col items-center gap-1.5">
               <span
-                key={day.key}
-                title={tr.activity.dayTooltip(day.count, fmt.day.format(day.date))}
-                className="flex-1 rounded-t-xs transition-[filter] hover:brightness-90"
-                style={{
-                  height:
-                    day.count > 0
-                      ? `${Math.max(8, (day.count / peak) * 100)}%`
-                      : '2px',
-                  background:
-                    day.count > 0
-                      ? isToday
-                        ? 'var(--accent)'
-                        : 'color-mix(in srgb, var(--accent) 72%, var(--color-surface))'
-                      : isToday
-                        ? 'var(--accent-soft-border)'
-                        : 'var(--color-track)',
-                }}
+                title={tr.activity.dayTooltip(d.count, dayFmt.format(d.date))}
+                className={`aspect-square w-full rounded-md ${
+                  isToday ? 'ring-2 ring-accent-dot/45' : ''
+                }`}
+                style={{ background: HEAT_BG[heatLevel(d.count)] }}
               />
-            );
-          })}
-        </div>
-        <div className="mt-1 border-t border-line pt-1.5">
-          <div className="flex justify-between text-[10.5px] text-ink-muted">
-            <span>{fmt.tick.format(graph[0].date)}</span>
-            <span>{fmt.tick.format(graph[Math.floor(GRAPH_DAYS / 2)].date)}</span>
-            <span className={streak.todayDone ? 'font-semibold text-accent-soft-text' : ''}>
-              {tr.activity.today}
-            </span>
-          </div>
-        </div>
+              <span className="text-[10px] font-medium text-ink-muted capitalize">
+                {weekdayFmt.format(d.date)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-3.5 text-[12px] text-meta">
+        {tr.activity.record}{' '}
+        <span className="font-bold text-ink-soft tnum">{streak.best}</span>{' '}
+        {tr.activity.days(streak.best)}
       </div>
     </div>
   );
