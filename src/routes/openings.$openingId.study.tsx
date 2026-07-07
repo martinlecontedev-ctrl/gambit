@@ -132,8 +132,11 @@ function StudyImpl({
   // grade would be pure waste.
   const [initialExercise] = useState(() => {
     if (!exercisePos || !opening) return undefined;
+    // Bypass both opt-outs: a move missed in a real game deserves its rep
+    // even if the chapter is toggled out of the daily drill.
     const unwindowed = {
       ...opening,
+      chapters: opening.chapters.map(c => ({ ...c, reviewEnabled: true })),
       lines: opening.lines.map(l => ({ ...l, reviewRanges: undefined })),
     };
     const cards = buildCards(unwindowed, storedCards, now).filter(

@@ -5,6 +5,12 @@ export type Chapter = {
   name: string;
   /** Display order. Lower = earlier. */
   order: number;
+  /** Opt-in to spaced review. Absent = false: a chapter contributes NOTHING
+   * to due counts, mastery or study queues until explicitly enabled (home
+   * card master switch / per-chapter switch on the overview). Stored SRS
+   * stats of a disabled chapter sleep and come back intact on re-enable —
+   * same semantics as cards windowed out by `reviewRanges`. */
+  reviewEnabled?: boolean;
   /** Custom starting FEN — only set on Lichess study chapters that use
    * `[FEN "…"]` + `[SetUp "1"]` headers. `undefined` means the chapter
    * starts from the standard initial position. Every Line in the chapter

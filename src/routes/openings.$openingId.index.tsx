@@ -16,6 +16,7 @@ import { NagSquareBadge } from '../components/NagSquareBadge';
 import { BoardNav } from '../components/opening/BoardNav';
 import { ChapterNameModal } from '../components/opening/ChapterNameModal';
 import { OpeningNotFound } from '../components/opening/OpeningNotFound';
+import { ReviewSwitch } from '../components/ReviewSwitch';
 import { RecognitionBar } from '../components/opening/RecognitionBar';
 import { SelectedLineView } from '../components/opening/SelectedLineView';
 import { useLineNavigation } from '../components/opening/useLineNavigation';
@@ -33,6 +34,7 @@ import {
   START_FEN,
   turnColor,
 } from '../domain/chess';
+import { withChapterReview } from '../domain/cards';
 import { getAccount, subscribeAccount } from '../domain/lichessAuth';
 import { fetchRecentGamesCached, type RecentGame } from '../domain/lichessGames';
 import { NAG_COLORS, NAG_LABELS, NAG_SYMBOLS } from '../domain/nag';
@@ -259,6 +261,15 @@ function OverviewInner({ opening }: { opening: Opening }) {
                 renaming={renamingChapterId === c.id}
                 renameDraft={chapterRenameDraft}
                 onSelect={() => switchToChapter(c.id)}
+                onToggleReview={() =>
+                  updateOpening(latest =>
+                    withChapterReview(
+                      latest,
+                      c.id,
+                      !latest.chapters.find(ch => ch.id === c.id)?.reviewEnabled,
+                    ),
+                  )
+                }
                 onDefineReview={() => setRangeChapterId(c.id)}
                 onRenameStart={() => {
                   setRenamingChapterId(c.id);
@@ -619,6 +630,7 @@ function ChapterItem({
   renaming,
   renameDraft,
   onSelect,
+  onToggleReview,
   onDefineReview,
   onRenameStart,
   onRenameChange,
@@ -633,6 +645,7 @@ function ChapterItem({
   renaming: boolean;
   renameDraft: string;
   onSelect: () => void;
+  onToggleReview: () => void;
   onDefineReview: () => void;
   onRenameStart: () => void;
   onRenameChange: (v: string) => void;
@@ -664,7 +677,7 @@ function ChapterItem({
         <button
           onClick={onSelect}
           title={chapter.name}
-          className={`flex w-full items-center gap-2.5 rounded-xl px-3.5 py-3 text-left text-sm font-medium transition ${
+          className={`flex w-full items-center gap-2.5 rounded-xl py-3 pr-11 pl-3.5 text-left text-sm font-medium transition ${
             active ? 'text-ink' : 'text-on-body hover:text-on-ink'
           }`}
         >
@@ -685,7 +698,14 @@ function ChapterItem({
         </button>
       )}
       {!renaming && (
-        <div className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-line bg-surface-high px-1 py-0.5 opacity-0 shadow-resting transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+        <ReviewSwitch
+          on={chapter.reviewEnabled === true}
+          onToggle={onToggleReview}
+          className="absolute top-1/2 right-2.5 -translate-y-1/2"
+        />
+      )}
+      {!renaming && (
+        <div className="pointer-events-none absolute right-11 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-line bg-surface-high px-1 py-0.5 opacity-0 shadow-resting transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
           <button
             onClick={e => {
               e.stopPropagation();

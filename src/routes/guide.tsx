@@ -240,6 +240,14 @@ function Guide() {
               erreur, mais tracé à part dans les compteurs de session.
             </Item>
             <Item>
+              La révision est <strong>opt-in</strong> : chaque ouverture a un
+              interrupteur sur sa carte (home) et chaque chapitre le sien
+              (overview), <em>désactivés par défaut</em>. Tant que rien n'est
+              activé, aucune carte n'est due nulle part. L'interrupteur de
+              l'ouverture bascule tous ses chapitres d'un coup ; le progrès
+              d'un chapitre désactivé dort et revient intact à la réactivation.
+            </Item>
+            <Item>
               La révision se fait chapitre par chapitre. Depuis la bannière de la
               home, <Kbd>Démarrer la révision</Kbd> enchaîne toutes les
               ouvertures qui ont des cartes dues.

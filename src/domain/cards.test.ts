@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   buildCards,
   coverCardInReviewRanges,
+  openingReviewOn,
   openingStats,
+  withChapterReview,
+  withOpeningReview,
   MASTERY_INTERVAL_DAYS,
 } from './cards';
 import { applyUci, chessFromFen, fenOf, START_FEN } from './chess';
@@ -14,11 +17,12 @@ const CH = 'ch1';
 // A white repertoire: 1.e4 e5 2.Nf3. The user plays White, so only the
 // white-to-move positions are cards: the start (→ e2e4) and after 1.e4 e5
 // (→ g1f3). Black's 1...e5 is not a user move. Expected total = 2.
+// Review is opt-in per chapter, so the fixture enables it explicitly.
 const opening: Opening = {
   id: 'op1',
   name: 'Test',
   color: 'white',
-  chapters: [{ id: CH, name: 'Principal', order: 0 }],
+  chapters: [{ id: CH, name: 'Principal', order: 0, reviewEnabled: true }],
   lines: [{ id: 'l1', name: 'main', chapterId: CH, moves: ['e2e4', 'e7e5', 'g1f3'] }],
   createdAt: 0,
   updatedAt: 0,
@@ -49,6 +53,26 @@ describe('buildCards', () => {
 
   it('returns nothing when the opening has no chapter', () => {
     expect(buildCards({ ...opening, chapters: [] }, [])).toEqual([]);
+  });
+
+  it('emits nothing for chapters not opted into review (default off)', () => {
+    const off = {
+      ...opening,
+      chapters: [{ id: CH, name: 'Principal', order: 0 }],
+    };
+    expect(buildCards(off, [])).toEqual([]);
+    expect(openingStats(off, [], 0)).toEqual({ total: 0, mastered: 0, due: 0 });
+  });
+
+  it('re-enabling a chapter brings its stored SRS stats back intact', () => {
+    const stored = storedCard(START_FEN, 'e2e4', { reps: 4, interval: 30 });
+    const off = withOpeningReview(opening, false);
+    expect(buildCards(off, [stored])).toEqual([]);
+    const e4 = buildCards(withOpeningReview(off, true), [stored]).find(
+      c => c.expectedUci === 'e2e4',
+    );
+    expect(e4?.reps).toBe(4);
+    expect(e4?.interval).toBe(30);
   });
 
   it('merges stored stats onto the matching position by position key', () => {
@@ -242,5 +266,36 @@ describe('coverCardInReviewRanges', () => {
   it('ignores lines of other chapters and unrelated positions', () => {
     const other = storedCard(START_FEN, 'e2e4', { chapterId: 'other' });
     expect(coverCardInReviewRanges(windowed, other)).toBe(windowed);
+  });
+});
+
+describe('review toggles', () => {
+  it('openingReviewOn is true as soon as one chapter reviews', () => {
+    const two: Opening = {
+      ...opening,
+      chapters: [
+        { id: CH, name: 'A', order: 0 },
+        { id: 'ch2', name: 'B', order: 1, reviewEnabled: true },
+      ],
+    };
+    expect(openingReviewOn(two)).toBe(true);
+    expect(openingReviewOn(withOpeningReview(two, false))).toBe(false);
+  });
+
+  it('withOpeningReview flips every chapter; withChapterReview only one', () => {
+    const two: Opening = {
+      ...opening,
+      chapters: [
+        { id: CH, name: 'A', order: 0 },
+        { id: 'ch2', name: 'B', order: 1 },
+      ],
+    };
+    expect(withOpeningReview(two, true).chapters.map(c => c.reviewEnabled)).toEqual([
+      true,
+      true,
+    ]);
+    expect(
+      withChapterReview(two, 'ch2', true).chapters.map(c => c.reviewEnabled ?? false),
+    ).toEqual([false, true]);
   });
 });

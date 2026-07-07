@@ -79,6 +79,9 @@ export function buildCards(
   const out: Card[] = [];
 
   for (const chapter of opening.chapters) {
+    // Review is opt-in per chapter: disabled chapters emit no cards at all
+    // (not due, not in the mastery denominator). Their stored stats survive.
+    if (!chapter.reviewEnabled) continue;
     const chapterLines = opening.lines.filter(l => l.chapterId === chapter.id);
     if (chapterLines.length === 0) continue;
     const trie = buildPrefixTrie(chapterLines);
@@ -203,6 +206,33 @@ export function coverCardInReviewRanges(opening: Opening, card: Card): Opening {
     return { ...line, reviewRanges: ranges };
   });
   return changed ? { ...opening, lines } : opening;
+}
+
+/** The home card's master switch state: ON as soon as one chapter reviews. */
+export function openingReviewOn(opening: Opening): boolean {
+  return opening.chapters.some(c => c.reviewEnabled);
+}
+
+/** Flip the whole opening in one gesture: every chapter follows. Chapter
+ * switches on the overview refine afterwards. */
+export function withOpeningReview(opening: Opening, on: boolean): Opening {
+  return {
+    ...opening,
+    chapters: opening.chapters.map(c => ({ ...c, reviewEnabled: on })),
+  };
+}
+
+export function withChapterReview(
+  opening: Opening,
+  chapterId: string,
+  on: boolean,
+): Opening {
+  return {
+    ...opening,
+    chapters: opening.chapters.map(c =>
+      c.id === chapterId ? { ...c, reviewEnabled: on } : c,
+    ),
+  };
 }
 
 export type OpeningStats = {
