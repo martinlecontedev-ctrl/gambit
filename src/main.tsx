@@ -13,7 +13,18 @@ applyStoredTheme();
 // account store notifies subscribers.
 void completeLoginIfCallback();
 
-const router = createRouter({ routeTree });
+const router = createRouter({
+  routeTree,
+  defaultNotFoundComponent: () => (
+    <main className="mx-auto max-w-260 px-10 pt-24 text-center">
+      <p className="text-[40px] font-extrabold tracking-tight text-on-ink">404</p>
+      <p className="mt-2 text-on-body">Cette page n'existe pas.</p>
+      <a href="/" className="mt-4 inline-block font-semibold text-accent-ground">
+        ← Retour aux ouvertures
+      </a>
+    </main>
+  ),
+});
 
 declare module '@tanstack/react-router' {
   interface Register {
