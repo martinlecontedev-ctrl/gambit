@@ -2,13 +2,14 @@ import { describe, it, expect } from 'vitest';
 import {
   buildCards,
   coverCardInReviewRanges,
+  healOpeningMoves,
   openingReviewOn,
   openingStats,
   withChapterReview,
   withOpeningReview,
   MASTERY_INTERVAL_DAYS,
 } from './cards';
-import { applyUci, chessFromFen, fenOf, START_FEN } from './chess';
+import { applyUci, chessFromFen, fenOf, START_FEN, uciToSanAt } from './chess';
 import { newCardStats } from './srs';
 import type { Card, Opening } from './types';
 
@@ -297,5 +298,60 @@ describe('review toggles', () => {
     expect(
       withChapterReview(two, 'ch2', true).chapters.map(c => c.reviewEnabled ?? false),
     ).toEqual([false, true]);
+  });
+});
+
+describe('healOpeningMoves', () => {
+  it('removes an illegal move and drops the line\'s now-misaligned review windows', () => {
+    // e2e5 is illegal after 1.e4 e5 → dropped; Nf3 stays. The buggy line
+    // rendered "e4 e5 -- Nf3" and made an unanswerable card.
+    const dirty: Opening = {
+      ...opening,
+      lines: [
+        {
+          id: 'l1',
+          name: 'main',
+          chapterId: CH,
+          moves: ['e2e4', 'e7e5', 'e2e5', 'g1f3'],
+          reviewRanges: [{ start: 2 }],
+        },
+      ],
+    };
+    const healed = healOpeningMoves(dirty);
+    expect(healed).not.toBe(dirty);
+    expect(healed.lines[0].moves).toEqual(['e2e4', 'e7e5', 'g1f3']);
+    expect(healed.lines[0].reviewRanges).toBeUndefined();
+  });
+
+  it('every healed expected move is answerable — no more unplayable cards', () => {
+    const dirty: Opening = {
+      ...opening,
+      lines: [
+        { id: 'l1', name: 'm', chapterId: CH, moves: ['e2e4', 'e7e5', 'e2e5', 'g1f3', 'a1a5'] },
+      ],
+    };
+    const cards = buildCards(healOpeningMoves(dirty), []);
+    // Every expected move renders to real SAN (not the "--" placeholder that
+    // an illegal move produces) → it can be played on the board in review.
+    for (const c of cards) {
+      expect(uciToSanAt(c.fen, c.expectedUci)).not.toBe('--');
+    }
+    // Only the legal user-turn moves survive: e2e4 (start) and g1f3 (after e5).
+    expect(cards.map(c => c.expectedUci).sort()).toEqual(['e2e4', 'g1f3']);
+  });
+
+  it('returns the same opening when every line is already legal', () => {
+    expect(healOpeningMoves(opening)).toBe(opening);
+  });
+
+  it('validates each line against its chapter start FEN, not the standard start', () => {
+    const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+    const o: Opening = {
+      ...opening,
+      chapters: [{ id: 'chx', name: 'X', order: 0, startFen: afterE4, reviewEnabled: true }],
+      lines: [{ id: 'lc', name: 'c', chapterId: 'chx', moves: ['e7e5', 'g1f3'] }],
+    };
+    // Both legal from `afterE4` → nothing dropped → same reference.
+    expect(healOpeningMoves(o)).toBe(o);
   });
 });

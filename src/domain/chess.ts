@@ -144,6 +144,41 @@ export function sansToUcis(
   return out;
 }
 
+/**
+ * Drop every move that can't be legally played in sequence from `startFen`:
+ * unparseable UCIs and moves illegal at their position. A dropped move does
+ * NOT advance the board, so a stray illegal move wedged between real moves is
+ * removed while the surrounding legal line survives. Heals legacy lines that
+ * accumulated bogus moves — those render as `--` in the scoresheet (chessops'
+ * placeholder for an illegal move) and, worse, become unanswerable expected
+ * moves in review. Returns the SAME array reference when nothing was dropped,
+ * so callers can detect "unchanged" with `===`.
+ */
+export function sanitizeMoves(
+  moves: string[],
+  startFen: string = START_FEN,
+): string[] {
+  let chess: Chess;
+  try {
+    chess = chessFromFen(startFen);
+  } catch {
+    // Unparseable start position — can't validate; leave the line as-is.
+    return moves;
+  }
+  const out: string[] = [];
+  let dropped = false;
+  for (const uci of moves) {
+    const move = parseUci(uci);
+    if (move && chess.isLegal(move)) {
+      out.push(uci);
+      chess.play(move);
+    } else {
+      dropped = true;
+    }
+  }
+  return dropped ? out : moves;
+}
+
 export function uciToSanAt(fen: string, uci: string): string {
   const chess = chessFromFen(fen);
   const m = parseUci(uci);

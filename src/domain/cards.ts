@@ -5,6 +5,7 @@ import {
   fenOf,
   positionKey,
   sameMove,
+  sanitizeMoves,
   START_FEN,
   turnColor,
 } from './chess';
@@ -16,6 +17,26 @@ import type { Card, CardStats, Opening } from './types';
  * SM-2 mature-card threshold. A move stops counting as in-progress once it
  * survives ~3 weeks of recall. */
 export const MASTERY_INTERVAL_DAYS = 21;
+
+/**
+ * Heal every line of an opening: drop illegal/legacy moves that would render
+ * as `--` in the scoresheet and become unanswerable expected moves in review
+ * (see `sanitizeMoves`). A line whose moves shift loses its `reviewRanges`
+ * (ply intervals no longer align) — falling back to "drill the whole line",
+ * safer than misaligned windows. Returns the same opening reference when
+ * nothing changed, so the read migration can persist only when needed.
+ */
+export function healOpeningMoves(opening: Opening): Opening {
+  let changed = false;
+  const lines = opening.lines.map(line => {
+    const chapter = opening.chapters.find(c => c.id === line.chapterId);
+    const cleaned = sanitizeMoves(line.moves, chapter?.startFen ?? START_FEN);
+    if (cleaned === line.moves) return line;
+    changed = true;
+    return { ...line, moves: cleaned, reviewRanges: undefined };
+  });
+  return changed ? { ...opening, lines } : opening;
+}
 
 export function cardIdFor(
   openingId: string,

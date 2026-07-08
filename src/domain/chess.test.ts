@@ -5,6 +5,7 @@ import {
   fenOf,
   isPromotion,
   lineToSan,
+  sanitizeMoves,
   positionKey,
   sameMove,
   START_FEN,
@@ -127,5 +128,37 @@ describe('lineToSan', () => {
 describe('uciToSanAt', () => {
   it('converts a single UCI move at a given FEN', () => {
     expect(uciToSanAt(START_FEN, 'e2e4')).toBe('e4');
+  });
+});
+
+describe('sanitizeMoves', () => {
+  it('drops illegal moves wedged between legal ones and keeps the real line', () => {
+    // The reported bug: "--" placeholders (illegal moves) interleaved with
+    // real moves. e2e5 is parseable but illegal for White after 1.f4 d5, so
+    // each dropped move leaves the board where it was — the real line surfaces.
+    const dirty = ['f2f4', 'd7d5', 'e2e5', 'e2e5', 'g1f3', 'g7g6', 'e2e5'];
+    expect(sanitizeMoves(dirty)).toEqual(['f2f4', 'd7d5', 'g1f3', 'g7g6']);
+  });
+
+  it('drops unparseable UCIs (empty string, garbage)', () => {
+    expect(sanitizeMoves(['e2e4', 'xxxx', '', 'e7e5'])).toEqual(['e2e4', 'e7e5']);
+  });
+
+  it('returns the SAME reference when every move is legal', () => {
+    const clean = ['e2e4', 'e7e5', 'g1f3'];
+    expect(sanitizeMoves(clean)).toBe(clean);
+  });
+
+  it('accepts castling (king-target spelling) as legal', () => {
+    const line = ['e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1c4', 'f8c5', 'e1g1'];
+    expect(sanitizeMoves(line)).toBe(line);
+  });
+
+  it('validates against the chapter start position, not the standard start', () => {
+    const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+    // e7e5 is Black's reply — legal from `afterE4`, illegal from the standard
+    // start (White to move), so the start FEN decides its fate.
+    expect(sanitizeMoves(['e7e5'], afterE4)).toEqual(['e7e5']);
+    expect(sanitizeMoves(['e7e5'])).toEqual([]);
   });
 });

@@ -1,30 +1,36 @@
 import type { Card, Folder, Opening, ReviewEvent, StudySync } from '../domain/types';
 import type { BackupData } from '../domain/backup';
+import { healOpeningMoves } from '../domain/cards';
 
 /**
- * Bring an opening up to the current shape. Openings stored before the
- * `chapters` field was introduced get a default "Principal" chapter that
- * adopts every existing line. Idempotent: re-running on an already-migrated
- * opening returns it untouched.
+ * Bring an opening up to the current shape. Two steps, each idempotent and
+ * returning `o` untouched when it's already current:
+ *  1. Chapters: openings stored before the `chapters` field get a default
+ *     "Principal" chapter that adopts every existing line.
+ *  2. Move healing: drop illegal/legacy moves that render as `--` and are
+ *     unanswerable in review (`healOpeningMoves`) — self-heals bad data on
+ *     load, then the caller persists it.
  */
 function migrateOpening(o: Opening): Opening {
+  let out = o;
   const hasChapters = Array.isArray(o.chapters) && o.chapters.length > 0;
   const allLinesHaveChapter =
     hasChapters && o.lines.every(l => l.chapterId !== undefined);
-  if (hasChapters && allLinesHaveChapter) return o;
-
-  const chapters =
-    hasChapters && o.chapters
-      ? o.chapters
-      : [{ id: crypto.randomUUID(), name: 'Principal', order: 0 }];
-  const fallbackChapterId = chapters[0].id;
-  return {
-    ...o,
-    chapters,
-    lines: o.lines.map(l =>
-      l.chapterId ? l : { ...l, chapterId: fallbackChapterId },
-    ),
-  };
+  if (!(hasChapters && allLinesHaveChapter)) {
+    const chapters =
+      hasChapters && o.chapters
+        ? o.chapters
+        : [{ id: crypto.randomUUID(), name: 'Principal', order: 0 }];
+    const fallbackChapterId = chapters[0].id;
+    out = {
+      ...out,
+      chapters,
+      lines: out.lines.map(l =>
+        l.chapterId ? l : { ...l, chapterId: fallbackChapterId },
+      ),
+    };
+  }
+  return healOpeningMoves(out);
 }
 
 const KEY_OPENINGS = 'gambit.openings';
